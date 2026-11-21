@@ -1,0 +1,138 @@
+name: SpotCheck
+options:
+  bundleIdPrefix: com.spotcheck
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "17.0"
+
+# QA/Staging are release-type (not debug-type): they're meant to
+# approximate real distributable builds for a later TestFlight step, not
+# debug-instrumented local builds.
+configs:
+  Debug: debug
+  QA: release
+  Staging: release
+  Release: release
+
+configFiles:
+  Debug: Config/Debug.xcconfig
+  QA: Config/QA.xcconfig
+  Staging: Config/Staging.xcconfig
+  Release: Config/Release.xcconfig
+
+packages:
+  # Pinned to 2.49.0, not latest (2.55.7): versions >= 2.50.0 declare
+  # swift-tools-version 6.1, which this machine's Xcode 16.2 (Swift 6.0
+  # toolchain) can't parse. 2.49.0 is the last tag on 5.10. Bump this
+  # once Xcode is updated past what supports tools-version 6.1.
+  Supabase:
+    url: https://github.com/supabase/supabase-swift.git
+    exactVersion: 2.49.0
+
+targets:
+  SpotCheck:
+    type: application
+    platform: iOS
+    sources:
+      - path: SpotCheck
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.spotcheck.ios
+        APP_URL_SCHEME: spotcheck
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: SpotCheck/Info.plist
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: NO
+        # Release-type configs (QA/Staging/Release) disable this by
+        # default, which breaks SpotCheckTests' `@testable import
+        # SpotCheck` under those schemes — needed in every config since
+        # AppEnvironmentTests runs under all four.
+        ENABLE_TESTABILITY: YES
+      configs:
+        QA:
+          PRODUCT_BUNDLE_IDENTIFIER: com.spotcheck.ios.qa
+          APP_URL_SCHEME: spotcheck-qa
+        Staging:
+          PRODUCT_BUNDLE_IDENTIFIER: com.spotcheck.ios.staging
+          APP_URL_SCHEME: spotcheck-staging
+    dependencies:
+      - package: Supabase
+        product: Supabase
+
+  SpotCheckTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: SpotCheckTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
+      # LOCAL_ENV only under Debug — lets AppEnvironmentTests know which
+      # assertion branch applies to the config it's actually running
+      # under (a single test binary only ever sees one config's values).
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: LOCAL_ENV
+    dependencies:
+      - target: SpotCheck
+
+schemes:
+  SpotCheck:
+    build:
+      targets:
+        SpotCheck: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SpotCheckTests
+    archive:
+      config: Release
+
+  SpotCheck-QA:
+    shared: true
+    build:
+      targets:
+        SpotCheck: all
+    run:
+      config: QA
+    test:
+      config: QA
+      targets:
+        - SpotCheckTests
+    archive:
+      config: QA
+
+  SpotCheck-Staging:
+    shared: true
+    build:
+      targets:
+        SpotCheck: all
+    run:
+      config: Staging
+    test:
+      config: Staging
+      targets:
+        - SpotCheckTests
+    archive:
+      config: Staging
+
+  SpotCheck-Release:
+    shared: true
+    build:
+      targets:
+        SpotCheck: all
+    run:
+      config: Release
+    test:
+      config: Release
+      targets:
+        - SpotCheckTests
+    archive:
+      config: Release

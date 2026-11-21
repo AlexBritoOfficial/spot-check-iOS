@@ -1,0 +1,8 @@
+// Non-secret build settings shared across every config. Committed.
+// Each config (Debug/QA/Staging/Release.xcconfig) includes this, then
+// layers its own Secrets.*.xcconfig on top for SUPABASE_SCHEME/HOST/
+// ANON_KEY, and project.yml sets the per-config PRODUCT_BUNDLE_IDENTIFIER
+// / APP_URL_SCHEME directly.
+
+SWIFT_VERSION = 6.0
+IPHONEOS_DEPLOYMENT_TARGET = 17.0

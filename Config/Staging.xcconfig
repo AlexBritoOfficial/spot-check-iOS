@@ -1,0 +1,5 @@
+// Staging: shared settings + the hosted `spot-check-staging` project's
+// secrets. #include? (optional) — Secrets.Staging.xcconfig doesn't exist
+// until that hosted project does; see Secrets.Staging.example.xcconfig.
+#include "Shared.xcconfig"
+#include? "Secrets.Staging.xcconfig"

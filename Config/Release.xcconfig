@@ -1,0 +1,8 @@
+// Release: shared settings + the hosted `spot-check-production`
+// project's secrets. #include? (optional) — Secrets.Production.xcconfig
+// doesn't exist until that hosted project does; see
+// Secrets.Production.example.xcconfig. Before this brief, Release shared
+// Debug's local-stack secrets via the same Shared.xcconfig — that's
+// deliberately no longer true.
+#include "Shared.xcconfig"
+#include? "Secrets.Production.xcconfig"

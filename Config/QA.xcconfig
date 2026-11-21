@@ -1,0 +1,7 @@
+// QA: shared settings + the hosted `spot-check-test` project's secrets.
+// #include? (optional) — Secrets.QA.xcconfig doesn't exist until that
+// hosted project does; see Secrets.QA.example.xcconfig. Until then this
+// config builds fine but AppEnvironment fails loudly at launch instead
+// of silently falling back to anything.
+#include "Shared.xcconfig"
+#include? "Secrets.QA.xcconfig"

@@ -1,0 +1,3 @@
+// Debug: shared settings + the local `supabase start` stack's secrets.
+#include "Shared.xcconfig"
+#include "Secrets.xcconfig"
