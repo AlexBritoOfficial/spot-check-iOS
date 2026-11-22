@@ -22,6 +22,9 @@ enum SCColor {
     static let backgroundDeep = Color(hex: 0x0A0D12)
     /// Elevated surface: cards, list rows, input fields.
     static let surface = Color(hex: 0x20242C)
+    /// The darker of the two bands in the canvas's diagonal "media not
+    /// loaded yet" hatch (clip thumbnails, spot photos).
+    static let surfaceAlt = Color(hex: 0x1A1E25)
     /// Borders, dividers, unselected chip/button outlines. Also doubles
     /// as the fill for input fields (Login/Signup/AddSpot/Booking all
     /// use this exact hex for `background` on inputs, not just borders).
