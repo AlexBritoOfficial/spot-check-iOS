@@ -4,6 +4,7 @@ import SwiftUI
 struct MapScreen: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(SpotsStore.self) private var spotsStore
+    @Environment(MenuCoordinator.self) private var menuCoordinator
     @State private var locationService = LocationService()
 
     @State private var cameraPosition: MapCameraPosition
@@ -89,6 +90,15 @@ struct MapScreen: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(SCColor.backgroundDeep, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        menuCoordinator.isOpen = true
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
+                    }
+                }
+            }
             .task { await loadInitialSpots() }
             .sheet(isPresented: $showAddSpot) {
                 AddSpotScreen(initialCoordinate: effectiveCoordinate)

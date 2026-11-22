@@ -10,6 +10,7 @@ struct MessagesScreen: View {
 
     @Environment(AuthManager.self) private var authManager
     @Environment(PresenceService.self) private var presenceService
+    @Environment(MenuCoordinator.self) private var menuCoordinator
 
     @State private var conversations: [ConversationOverview] = []
     @State private var nearbySkaters: [Profile] = []
@@ -55,6 +56,15 @@ struct MessagesScreen: View {
                 }
             }
             .navigationTitle("Messages")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        menuCoordinator.isOpen = true
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
+                    }
+                }
+            }
             .task { await load() }
             .refreshable { await load() }
             .onDisappear { Task { await presenceService.leave() } }

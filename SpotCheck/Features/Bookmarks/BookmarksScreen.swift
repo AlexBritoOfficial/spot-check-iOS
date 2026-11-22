@@ -4,6 +4,7 @@ struct BookmarksScreen: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(SpotsStore.self) private var spotsStore
     @Environment(BookmarksStore.self) private var bookmarksStore
+    @Environment(MenuCoordinator.self) private var menuCoordinator
 
     @State private var isLoading = false
     @State private var spotIDForDetail: UUID?
@@ -52,6 +53,13 @@ struct BookmarksScreen: View {
             .toolbarBackground(SCColor.background, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        menuCoordinator.isOpen = true
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Text("\(totalCount) spots")
                         .font(.system(size: 13))
