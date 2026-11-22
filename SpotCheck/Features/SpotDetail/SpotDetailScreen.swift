@@ -1,6 +1,15 @@
 import MapKit
 import SwiftUI
 
+/// The canvas's `SpotDetail` artboard: a tall photo with floating
+/// controls, a rounded sheet riding over it, and a docked action row.
+///
+/// Two deliberate departures from the artboard. The owner's delete
+/// action has no place in the artboard's header, so it sits in an
+/// overflow menu beside the bookmark rather than being dropped. The
+/// spot's description isn't on the artboard either, but it's real
+/// user-entered content, so it stays. Bust rate shows the artboard's
+/// placeholders -- nothing logs sessions yet.
 struct SpotDetailScreen: View {
     let spotID: UUID
 
@@ -12,6 +21,7 @@ struct SpotDetailScreen: View {
     @State private var photoURL: URL?
     @State private var showDeleteConfirm = false
     @State private var isDeleting = false
+    @State private var showBustLog = false
 
     private var spot: Spot? { spotsStore.spot(id: spotID) }
     private var isOwner: Bool { spot?.isOwned(by: authManager.currentProfile?.id) ?? false }
@@ -19,121 +29,36 @@ struct SpotDetailScreen: View {
     var body: some View {
         Group {
             if let spot {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        photoHeader
-
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(spot.name)
-                                    .font(SCFont.heading(28))
-                                    .foregroundStyle(SCColor.textPrimary)
-                                Spacer()
-                                if let distance = spot.distanceMeters {
-                                    Text("\(String(format: "%.1f", distance / 1609.34)) mi · \(spot.city)")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(SCColor.textSecondary)
-                                } else if !spot.city.isEmpty {
-                                    Text(spot.city)
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(SCColor.textSecondary)
-                                }
-                            }
-
-                            HStack(spacing: 8) {
-                                Badge(text: spot.spotType.rawValue)
-                                Badge.difficulty(spot.difficulty)
-                                if !spot.isPublic {
-                                    Badge(text: "Private", color: SCColor.textSecondary)
-                                }
-                            }
-
-                            HStack(spacing: 8) {
-                                Image(systemName: spot.isSkateable ? "checkmark.circle.fill" : "questionmark.circle")
-                                    .foregroundStyle(spot.isSkateable ? SCColor.background : SCColor.textSecondary, spot.isSkateable ? SCColor.success : .clear)
-                                Text(spot.isSkateable ? "Confirmed skateable" : "Unconfirmed")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(spot.isSkateable ? SCColor.success : SCColor.textSecondary)
-                            }
-
-                            if let description = spot.description, !description.isEmpty {
-                                Text(description)
-                                    .font(.system(size: 16))
-                                    .foregroundStyle(SCColor.textBody)
-                                    .lineSpacing(4)
-                            }
-
-                            if !spot.features.isEmpty {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("FEATURES").scFieldLabel()
-                                    HStack(spacing: 8) {
-                                        ForEach(spot.features, id: \.self) { feature in
-                                            Badge(text: feature.rawValue)
-                                        }
-                                    }
-                                }
-                            }
-
-                            StarRating(rating: spot.rating)
-
-                            Button {
-                                openDirections(to: spot)
-                            } label: {
-                                Text("Directions")
-                                    .font(SCFont.buttonLabel)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .frame(height: SCMetric.controlHeight)
-                            .background(SCColor.accent)
-                            .foregroundStyle(SCColor.background)
-                            .clipShape(RoundedRectangle(cornerRadius: SCRadius.control))
-                            .padding(.top, 8)
+                ZStack(alignment: .top) {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            photoHeader
+                            details(for: spot)
                         }
-                        .padding(.horizontal, 20)
                     }
-                    .padding(.bottom, 32)
+                    .ignoresSafeArea(edges: .top)
+
+                    floatingControls
                 }
-                .background(SCColor.background)
+                .safeAreaInset(edge: .bottom) { actionBar(for: spot) }
             } else {
                 ProgressView().tint(SCColor.accent)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SCColor.background)
-        .navigationTitle(spot?.name ?? "Spot")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(SCColor.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await toggleBookmark() }
-                } label: {
-                    Image(systemName: bookmarksStore.isBookmarked(spotID) ? "bookmark.fill" : "bookmark")
-                        .foregroundStyle(SCColor.accent)
-                }
-                .disabled(isOwner)
-            }
-            if isOwner {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(role: .destructive) {
-                        showDeleteConfirm = true
-                    } label: {
-                        Image(systemName: "trash")
-                            .foregroundStyle(SCColor.danger)
-                    }
-                }
-            }
-        }
+        .toolbar(.hidden)
         .task { await loadPhoto() }
         .confirmationDialog("Delete this spot?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { Task { await delete() } }
         }
+        .sheet(isPresented: $showBustLog) {
+            BustLogScreen()
+        }
     }
 
-    @ViewBuilder
     private var photoHeader: some View {
         ZStack {
-            SCColor.surface
             if let photoURL {
                 AsyncImage(url: photoURL) { image in
                     image.resizable().scaledToFill()
@@ -141,14 +66,166 @@ struct SpotDetailScreen: View {
                     ProgressView().tint(SCColor.accent)
                 }
             } else {
-                Text("SPOT PHOTO")
-                    .font(SCFont.headingFixed(12))
-                    .foregroundStyle(SCColor.textSecondary)
+                SCMediaPlaceholder(cornerRadius: 0, label: "SPOT PHOTO")
             }
         }
-        .frame(height: 260)
+        .frame(height: 330)
         .frame(maxWidth: .infinity)
         .clipped()
+    }
+
+    private var floatingControls: some View {
+        HStack {
+            SCCircleIconButton(
+                systemImage: "chevron.left",
+                accessibilityTitle: "Back to map"
+            ) {
+                dismiss()
+            }
+
+            Spacer()
+
+            if isOwner {
+                Menu {
+                    Button("Delete spot", systemImage: "trash", role: .destructive) {
+                        showDeleteConfirm = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(SCColor.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .background(SCColor.backgroundDeep.opacity(0.75))
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel("More actions")
+            } else {
+                SCCircleIconButton(
+                    systemImage: bookmarksStore.isBookmarked(spotID) ? "bookmark.fill" : "bookmark",
+                    accessibilityTitle: bookmarksStore.isBookmarked(spotID) ? "Remove bookmark" : "Bookmark this spot"
+                ) {
+                    Task { await toggleBookmark() }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func details(for spot: Spot) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(spot.name)
+                    .font(SCFont.heading(28))
+                    .foregroundStyle(SCColor.textPrimary)
+                Spacer()
+                Text(locationLine(for: spot))
+                    .font(.system(size: 14))
+                    .foregroundStyle(SCColor.textSecondary)
+            }
+
+            HStack(spacing: 8) {
+                Badge(text: spot.spotType.rawValue)
+                Badge.difficulty(spot.difficulty)
+                if !spot.isPublic {
+                    Badge(text: "Private")
+                }
+            }
+
+            HStack(spacing: 8) {
+                if spot.isSkateable {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(SCColor.background)
+                        .frame(width: 20, height: 20)
+                        .background(SCColor.success)
+                        .clipShape(Circle())
+                    Text("Confirmed skateable")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(SCColor.success)
+                } else {
+                    Image(systemName: "questionmark.circle")
+                        .foregroundStyle(SCColor.textSecondary)
+                    Text("Unconfirmed")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(SCColor.textSecondary)
+                }
+            }
+
+            if let description = spot.description, !description.isEmpty {
+                Text(description)
+                    .font(.system(size: 15))
+                    .lineSpacing(4)
+                    .foregroundStyle(SCColor.textBody)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !spot.features.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Features").scSectionLabel()
+                    FlowChips(spacing: 8) {
+                        ForEach(spot.features, id: \.self) { feature in
+                            Text(feature.rawValue.uppercased())
+                                .font(SCFont.headingFixed(11))
+                                .foregroundStyle(SCColor.textPrimary)
+                                .padding(.horizontal, 12)
+                                .frame(height: 32)
+                                .overlay(Capsule().stroke(SCColor.border, lineWidth: 1.5))
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Bust rate · from [N] logs").scSectionLabel()
+                HStack(spacing: 8) {
+                    SCStatTile(value: "[X]%", label: "Overall")
+                    SCStatTile(value: "[X]%", label: "Weekdays")
+                    SCStatTile(value: "[X]%", label: "Weekends")
+                }
+            }
+
+            HStack(spacing: 10) {
+                StarRating(rating: spot.rating)
+                Text("\(spot.rating).0 avg")
+                    .font(SCFont.headingFixed(14))
+                    .foregroundStyle(SCColor.textPrimary)
+            }
+        }
+        .padding(.horizontal, SCMetric.screenPadding)
+        .padding(.top, 24)
+        .padding(.bottom, 28)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SCColor.background)
+        .clipShape(
+            UnevenRoundedRectangle(
+                cornerRadii: .init(topLeading: SCRadius.sheet, topTrailing: SCRadius.sheet)
+            )
+        )
+        .overlay(alignment: .top) { SCColor.border.frame(height: 1) }
+        .offset(y: -26)
+    }
+
+    private func actionBar(for spot: Spot) -> some View {
+        SCFooterBar {
+            Button("Directions") { openDirections(to: spot) }
+                .buttonStyle(.scPrimary(fontSize: 14))
+
+            Button("Log session") { showBustLog = true }
+                .buttonStyle(.scSecondary(fontSize: 14))
+                .frame(width: 104)
+
+            Button("Reviews") {}
+                .buttonStyle(.scSecondary(fontSize: 14))
+                .frame(width: 92)
+        }
+    }
+
+    private func locationLine(for spot: Spot) -> String {
+        if let distance = spot.distanceMeters {
+            let miles = String(format: "%.1f", distance / 1609.34)
+            return spot.city.isEmpty ? "\(miles) mi" : "\(miles) mi · \(spot.city)"
+        }
+        return spot.city
     }
 
     private func loadPhoto() async {

@@ -9,11 +9,13 @@ struct ChatScreen: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(SpotsStore.self) private var spotsStore
     @Environment(PresenceService.self) private var presenceService
+    @Environment(\.dismiss) private var dismiss
 
     @State private var messages: [Message] = []
     @State private var draft = ""
     @State private var isSending = false
     @State private var showShareSpot = false
+    @State private var showReport = false
     @State private var errorMessage: String?
     @State private var channel: RealtimeChannelV2?
 
@@ -21,6 +23,8 @@ struct ChatScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            header
+
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 8) {
@@ -43,44 +47,16 @@ struct ChatScreen: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .font(.footnote)
+                    .foregroundStyle(SCColor.danger)
                     .padding(.horizontal)
             }
 
-            HStack(spacing: 8) {
-                Button {
-                    showShareSpot = true
-                } label: {
-                    Image(systemName: "mappin.circle")
-                        .font(.title2)
-                }
-
-                TextField("Message", text: $draft)
-                    .textFieldStyle(.roundedBorder)
-
-                Button {
-                    Task { await sendDraft() }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                }
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
-            }
-            .padding()
+            composer
         }
-        .navigationTitle(otherUsername)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 2) {
-                    Text(otherUsername).font(.headline)
-                    if presenceService.isOnline(otherUserID) {
-                        Text("Skating now").font(.caption2).foregroundStyle(.green)
-                    }
-                }
-            }
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(SCColor.backgroundDeep)
+        .toolbar(.hidden)
         .task { await connect() }
         .onDisappear {
             if let channel {
@@ -93,6 +69,113 @@ struct ChatScreen: View {
                 Task { await send(body: nil, sharedSpotID: spot.id) }
             }
         }
+        .sheet(isPresented: $showReport) {
+            ReportScreen(subjectName: otherUsername)
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(SCColor.textPrimary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to messages")
+
+            HStack(spacing: 12) {
+                Avatar(
+                    initial: otherUsername,
+                    size: 42,
+                    backgroundColor: SCColor.border,
+                    foregroundColor: SCColor.textPrimary,
+                    isOnline: presenceService.isOnline(otherUserID)
+                )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(otherUsername)
+                        .font(SCFont.headingFixed(15))
+                        .foregroundStyle(SCColor.textPrimary)
+                    if presenceService.isOnline(otherUserID) {
+                        Text("Skating now")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(SCColor.success)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                showReport = true
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(SCColor.textPrimary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Report or block \(otherUsername)")
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 12)
+        .padding(.top, SCMetric.headerTop(52))
+        .padding(.bottom, 12)
+        .background(SCColor.background)
+        .overlay(alignment: .bottom) { SCColor.border.frame(height: 1) }
+    }
+
+    private var composer: some View {
+        HStack(spacing: 8) {
+            Button {
+                showShareSpot = true
+            } label: {
+                SCPinGlyph(height: 22, fill: .clear, strokeColor: SCColor.accent)
+                    .frame(width: 44, height: 44)
+                    .overlay(Circle().stroke(SCColor.border, lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share a spot")
+
+            ZStack(alignment: .leading) {
+                if draft.isEmpty {
+                    Text("Message")
+                        .font(.system(size: 15))
+                        .foregroundStyle(SCColor.textSecondary)
+                        .padding(.horizontal, 16)
+                        .allowsHitTesting(false)
+                }
+                TextField("", text: $draft)
+                    .font(.system(size: 15))
+                    .foregroundStyle(SCColor.textPrimary)
+                    .tint(SCColor.accent)
+                    .padding(.horizontal, 16)
+                    .accessibilityLabel("Message \(otherUsername)")
+            }
+            .frame(height: 44)
+            .background(SCColor.inputFill)
+            .clipShape(Capsule())
+
+            Button {
+                Task { await sendDraft() }
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(SCColor.background)
+                    .frame(width: 44, height: 44)
+                    .background(SCColor.accent)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
+            .accessibilityLabel("Send")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(SCColor.background)
+        .overlay(alignment: .top) { SCColor.border.frame(height: 1) }
     }
 
     /// Subscribe first, then backfill: subscribing after the fetch

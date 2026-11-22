@@ -42,12 +42,38 @@ participant's own `last_read_at`.
 (unlike the web app, where sign-in/sign-up are still mock UI with
 nothing persisted). Email confirmation is off for now — see README.
 
-## Explicitly out of scope (this pass)
+## The marketplace screens: drawn, not wired
 
-No schema, no screens wired for: **Booking** (lessons), **FilmBooking**
-(paid filming/photo sessions), **FilmerQualify** / **ProApply** /
-**ProProfile** (Pro application + background check), **ClipUpload** /
-**ClipVault** (raw footage delivery), and any payments/escrow. The
-design canvas's "Verification" screen is specifically the Pro
-background-check status screen, not an auth/OTP step — there is no
-email/phone verification screen in this app's flow at all.
+The business model expanded, and the design canvas ("Spot Check
+Mobile", 36 artboards) is now the source of truth for both iOS and
+Android. Every artboard has a SwiftUI screen in `Features/`, but only
+the ones above are backed by schema and repositories. These are
+**visuals only** — static sample content, local view state, empty
+button actions — pending per-feature planning:
+
+**Filmers** — a skater books a background-checked filmer for a session,
+the filmer delivers raw clips, money is held until both confirm.
+`FilmerOnboarding/` (apply, qualifications, background check, public
+filmer profile), `Filming/` (booking, the filmer's request inbox, clip
+upload, the skater's clip vault), `FilmerTools/` (rates, earnings,
+two-way rating, the three-strike pause).
+
+**Clips & visibility** — `Clips/` (feed, posting a clip, the monthly
+challenge) and `Portfolio/` (the signed-in skater's own portfolio and
+sponsorship ladder, profile insights).
+
+**Industry** — `Opportunities/` (offers a skater receives, scouting,
+sending an offer) for verified shop/brand accounts.
+
+**Trust & safety** — `Trust/` (18+ ID check, bust logging, paid pro
+Q&A, report and block).
+
+Terms worth knowing: a **bust** is getting kicked out of a spot by
+security or police, and bust logs feed a spot's bust rate. A **make**
+vs. a **bail** is a landed trick vs. a failed one, which is how raw
+clips get tagged. The canvas's "Verification" screen is the filmer
+background-check status, not an auth/OTP step; "IDVerify" is the
+separate 18+ identity check.
+
+Still absent entirely: any schema for the above, payments/escrow, and
+**Booking** (lessons, which the canvas doesn't cover).
