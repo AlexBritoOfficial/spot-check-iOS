@@ -14,6 +14,8 @@ final class MenuCoordinator {
         case opportunities
         case transactions
         case becomeFilmer
+        /// Replaces `becomeFilmer` in the drawer once filmer is active.
+        case filmerTools
         case filmingRequests
         case scoutSkaters
 

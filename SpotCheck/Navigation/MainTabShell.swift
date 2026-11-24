@@ -13,6 +13,7 @@ struct MainTabShell: View {
     @State private var bookmarksStore = BookmarksStore()
     @State private var presenceService = PresenceService()
     @State private var menuCoordinator = MenuCoordinator()
+    @State private var modeCoordinator = ModeCoordinator()
 
     @State private var locationService = LocationService()
     @State private var selection: MainTab = .map
@@ -25,7 +26,10 @@ struct MainTabShell: View {
         ZStack(alignment: .leading) {
             tabs
                 .overlay(alignment: .bottom) {
-                    SCBottomNavBar(selection: $selection) {
+                    SCBottomNavBar(
+                        selection: $selection,
+                        tabs: MainTab.tabs(for: modeCoordinator.activeMode)
+                    ) {
                         showPostClip = true
                     }
                     .background(SCColor.background.ignoresSafeArea(edges: .bottom))
@@ -67,8 +71,24 @@ struct MainTabShell: View {
         .environment(bookmarksStore)
         .environment(presenceService)
         .environment(menuCoordinator)
+        .environment(modeCoordinator)
         .onChange(of: selection) { _, newValue in
             visited.insert(newValue)
+        }
+        // A capability can be revoked or paused while the app is open, and a
+        // mode restored from UserDefaults may no longer be granted, so the
+        // stored mode is validated against the live set rather than trusted.
+        .onChange(of: authManager.currentCapabilities, initial: true) { _, capabilities in
+            modeCoordinator.reconcile(with: capabilities)
+        }
+        .onChange(of: modeCoordinator.activeMode) { _, newMode in
+            // FEED and DISCOVER occupy the same slot, so a mode switch can
+            // leave `selection` pointing at a tab the new bar doesn't show.
+            let tabs = MainTab.tabs(for: newMode)
+            if !tabs.contains(selection) {
+                selection = .map
+                visited.insert(.map)
+            }
         }
         .sheet(isPresented: $showPostClip, onDismiss: {
             if isAddSpotQueued {
@@ -99,6 +119,9 @@ struct MainTabShell: View {
             if visited.contains(.feed) {
                 FeedScreen().tabVisible(selection == .feed)
             }
+            if visited.contains(.discover) {
+                DiscoverScreen().tabVisible(selection == .discover)
+            }
             if visited.contains(.chat) {
                 MessagesScreen().tabVisible(selection == .chat)
             }
@@ -117,6 +140,8 @@ struct MainTabShell: View {
         // that PayoutsScreen can push it too.
         case .transactions: NavigationStack { TransactionsScreen() }
         case .becomeFilmer: ProApplyScreen()
+        // Earnings owns the push to Payouts, so this one row reaches both.
+        case .filmerTools: EarningsScreen()
         case .filmingRequests: DiscoverScreen()
         case .scoutSkaters: IndustryScoutScreen()
         }

@@ -1,12 +1,13 @@
 import SwiftUI
 
 enum MainTab: CaseIterable {
-    case map, feed, chat, profile
+    case map, feed, discover, chat, profile
 
     var label: String {
         switch self {
         case .map: "MAP"
         case .feed: "FEED"
+        case .discover: "DISCOVER"
         case .chat: "CHAT"
         case .profile: "PROFILE"
         }
@@ -16,8 +17,23 @@ enum MainTab: CaseIterable {
         switch self {
         case .map: "map"
         case .feed: "play.rectangle"
+        case .discover: "safari"
         case .chat: "bubble.left"
         case .profile: "person.crop.circle"
+        }
+    }
+
+    /// Always four tabs, two either side of the raised post action. Filmer mode
+    /// swaps FEED for DISCOVER, which is exactly what
+    /// `Features/Filming/DiscoverScreen` defers: "the canvas draws a filmer-mode
+    /// bar with DISCOVER replacing FEED".
+    ///
+    /// Industry deliberately gets the skater bar -- the canvas gives industry
+    /// accounts no bottom-bar destination of their own, only drawer rows.
+    static func tabs(for mode: AppMode) -> [MainTab] {
+        switch mode {
+        case .skater, .industry: [.map, .feed, .chat, .profile]
+        case .filmer: [.map, .discover, .chat, .profile]
         }
     }
 }
@@ -28,16 +44,19 @@ enum MainTab: CaseIterable {
 /// the canvas doesn't use anywhere).
 struct SCBottomNavBar: View {
     @Binding var selection: MainTab
+    /// Always four, supplied by `MainTab.tabs(for:)` so the bar doesn't need to
+    /// know about modes.
+    var tabs: [MainTab] = MainTab.tabs(for: .skater)
     var chatBadge: Int?
     var onPost: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            item(.map)
-            item(.feed)
+            ForEach(Array(tabs.prefix(2)), id: \.self) { item($0) }
             postButton
-            item(.chat, badge: chatBadge)
-            item(.profile)
+            ForEach(Array(tabs.dropFirst(2)), id: \.self) { tab in
+                item(tab, badge: tab == .chat ? chatBadge : nil)
+            }
         }
         .padding(.horizontal, 8)
         .padding(.top, 8)

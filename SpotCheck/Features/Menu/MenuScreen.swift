@@ -9,6 +9,7 @@ import SwiftUI
 /// the same way.
 struct MenuScreen: View {
     @Environment(AuthManager.self) private var authManager
+    @Environment(ModeCoordinator.self) private var modeCoordinator
 
     var onClose: () -> Void
     var onSelectProfile: () -> Void
@@ -18,12 +19,17 @@ struct MenuScreen: View {
 
     private let panelWidth: CGFloat = 320
 
+    private var capabilities: Set<Capability> { authManager.currentCapabilities }
+    private var isFilmer: Bool { capabilities.contains(.filmer) }
+    private var isIndustry: Bool { capabilities.contains(.industry) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             if let profile = authManager.currentProfile {
                 profileRow(profile)
             }
+            modeSwitcher
             rows
             Spacer()
         }
@@ -76,6 +82,50 @@ struct MenuScreen: View {
         .padding(.vertical, 22)
     }
 
+    /// Absent entirely for a plain skater: with one mode available there is
+    /// nothing to switch between, and an inert control reads as broken.
+    @ViewBuilder
+    private var modeSwitcher: some View {
+        if modeCoordinator.isSwitcherVisible(given: capabilities) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("VIEWING AS").scSectionLabel()
+
+                HStack(spacing: 8) {
+                    ForEach(modeCoordinator.available(given: capabilities), id: \.self) { mode in
+                        let isActive = mode == modeCoordinator.activeMode
+                        Button {
+                            modeCoordinator.select(mode, given: capabilities)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: mode.systemImage)
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(mode.label.uppercased())
+                                    .font(SCFont.headingFixed(11))
+                            }
+                            .foregroundStyle(isActive ? SCColor.background : SCColor.textPrimary)
+                            .padding(.horizontal, 12)
+                            .frame(height: 34)
+                            .background(isActive ? SCColor.accent : .clear)
+                            .overlay(
+                                Capsule().stroke(
+                                    isActive ? SCColor.accent : SCColor.border,
+                                    lineWidth: 1.5
+                                )
+                            )
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isActive ? [.isSelected, .isButton] : .isButton)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Viewing as")
+        }
+    }
+
     private var rows: some View {
         VStack(spacing: 0) {
             row(title: "My profile", systemImage: "person", action: onSelectProfile)
@@ -83,16 +133,36 @@ struct MenuScreen: View {
             row(title: "Opportunities", systemImage: "briefcase") { onSelect(.opportunities) }
             row(title: "Messages", systemImage: "bubble.left", action: onSelectMessages)
             row(title: "Transactions", systemImage: "creditcard") { onSelect(.transactions) }
-            row(
-                title: "Earn with Spot Check",
-                systemImage: "dollarsign.circle",
-                tint: SCColor.accent
-            ) { onSelect(.becomeFilmer) }
-            row(title: "Filming requests", systemImage: "safari", tag: "Filmers") {
-                onSelect(.filmingRequests)
+
+            // A live filmer has no use for the recruitment pitch, so the row
+            // becomes their tools instead. This also gives EarningsScreen --
+            // and through it PayoutsScreen -- its first real entry point.
+            if isFilmer {
+                row(
+                    title: "Filmer tools",
+                    systemImage: "slider.horizontal.3",
+                    tint: SCColor.accent
+                ) { onSelect(.filmerTools) }
+            } else {
+                row(
+                    title: "Earn with Spot Check",
+                    systemImage: "dollarsign.circle",
+                    tint: SCColor.accent
+                ) { onSelect(.becomeFilmer) }
             }
-            row(title: "Scout skaters", systemImage: "magnifyingglass", tag: "Industry") {
-                onSelect(.scoutSkaters)
+
+            // The canvas shows both rows to everyone with "Filmers"/"Industry"
+            // as decorative tags. Gating them is a product rule beyond what the
+            // artboard draws -- the tag stays as a label for what the row is.
+            if isFilmer {
+                row(title: "Filming requests", systemImage: "safari", tag: "Filmers") {
+                    onSelect(.filmingRequests)
+                }
+            }
+            if isIndustry {
+                row(title: "Scout skaters", systemImage: "magnifyingglass", tag: "Industry") {
+                    onSelect(.scoutSkaters)
+                }
             }
             row(title: "Notifications", systemImage: "bell") {}
             row(title: "Settings", systemImage: "gearshape") {}
@@ -160,4 +230,5 @@ struct MenuScreen: View {
         )
     }
     .environment(AuthManager())
+    .environment(ModeCoordinator())
 }
