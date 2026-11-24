@@ -1,39 +1,40 @@
 import SwiftUI
 
 struct RootView: View {
+    /// Session restore usually resolves in well under a second, which
+    /// flashes the splash rather than showing it. Hold it for at least
+    /// this long so the wordmark actually reads.
+    private static let minimumSplashDuration: Duration = .seconds(1.8)
+
     @Environment(AuthManager.self) private var authManager
+    @State private var splashHoldElapsed = false
 
-    var body: some View {
-        switch authManager.state {
-        case .loading:
-            ProgressView()
-        case .signedOut:
-            LoginView()
-        case .signedIn:
-            SignedInTabView()
-        }
+    private var isRestoringSession: Bool {
+        if case .loading = authManager.state { return true }
+        return false
     }
-}
-
-private struct SignedInTabView: View {
-    @State private var spotsStore = SpotsStore()
-    @State private var bookmarksStore = BookmarksStore()
-    @State private var presenceService = PresenceService()
 
     var body: some View {
-        TabView {
-            MapScreen()
-                .tabItem { Label("Map", systemImage: "map") }
-            BookmarksScreen()
-                .tabItem { Label("Saved", systemImage: "bookmark") }
-            MessagesScreen()
-                .tabItem { Label("Chat", systemImage: "bubble.left.and.bubble.right") }
-            MenuScreen()
-                .tabItem { Label("Menu", systemImage: "line.3.horizontal") }
+        Group {
+            if isRestoringSession || !splashHoldElapsed {
+                SplashScreen()
+                    .transition(.opacity)
+            } else {
+                switch authManager.state {
+                case .loading:
+                    SplashScreen()
+                case .signedOut:
+                    LoginView()
+                case .signedIn:
+                    MainTabShell()
+                }
+            }
         }
-        .environment(spotsStore)
-        .environment(bookmarksStore)
-        .environment(presenceService)
+        .animation(.easeInOut(duration: 0.3), value: splashHoldElapsed)
+        .task {
+            try? await Task.sleep(for: Self.minimumSplashDuration)
+            splashHoldElapsed = true
+        }
     }
 }
 

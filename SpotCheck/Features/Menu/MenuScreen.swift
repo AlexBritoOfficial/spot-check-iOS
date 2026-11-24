@@ -1,55 +1,234 @@
 import SwiftUI
 
-/// Bookmarks and Messages already have their own tabs, so this doesn't
-/// repeat them -- just the profile header, "My profile," and sign out.
-/// Notifications/Settings and "Earn with Spot Check" from the design
-/// canvas have no backend behind them in this pass, so they're left out
-/// rather than added as dead buttons.
+/// The slide-out drawer from the canvas's `Menu` artboard: a 320pt
+/// panel with the profile header and the canvas's full row set.
+///
+/// The canvas draws unread badges on Opportunities and Messages. They're
+/// left off here rather than hardcoded -- this is a live screen, and
+/// nothing feeds those counts yet. `SCBottomNavBar`'s badge is plumbed
+/// the same way.
 struct MenuScreen: View {
     @Environment(AuthManager.self) private var authManager
-    @State private var showProfile = false
+    @Environment(ModeCoordinator.self) private var modeCoordinator
+
+    var onClose: () -> Void
+    var onSelectProfile: () -> Void
+    var onSelectMessages: () -> Void
+    var onSelect: (MenuCoordinator.Destination) -> Void
+    var onSignOut: () -> Void
+
+    private let panelWidth: CGFloat = 320
+
+    private var capabilities: Set<Capability> { authManager.currentCapabilities }
+    private var isFilmer: Bool { capabilities.contains(.filmer) }
+    private var isIndustry: Bool { capabilities.contains(.industry) }
 
     var body: some View {
-        NavigationStack {
-            List {
-                if let profile = authManager.currentProfile {
-                    Section {
-                        HStack(spacing: 14) {
-                            Circle()
-                                .fill(Color(.tertiarySystemFill))
-                                .frame(width: 56, height: 56)
-                                .overlay(Text(profile.username.prefix(1).uppercased()).font(.title2.bold()))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(profile.username).font(.headline)
-                                Text(profile.handle).font(.subheadline).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            if let profile = authManager.currentProfile {
+                profileRow(profile)
+            }
+            modeSwitcher
+            rows
+            Spacer()
+        }
+        .frame(width: panelWidth)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(SCColor.background)
+        .overlay(alignment: .trailing) {
+            SCColor.border.frame(width: 1)
+        }
+        .ignoresSafeArea()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Main menu")
+    }
+
+    private var header: some View {
+        HStack {
+            Wordmark(size: 20)
+            Spacer()
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(SCColor.textPrimary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close menu")
+        }
+        .padding(.leading, 20)
+        .padding(.trailing, 10)
+        .padding(.top, 52)
+        .padding(.bottom, 14)
+        .overlay(alignment: .bottom) {
+            SCColor.border.frame(height: 1)
+        }
+    }
+
+    private func profileRow(_ profile: Profile) -> some View {
+        HStack(spacing: 14) {
+            Avatar(initial: profile.username, size: 56)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(profile.username)
+                    .font(SCFont.headingFixed(16))
+                    .foregroundStyle(SCColor.textPrimary)
+                Text(profile.handle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(SCColor.textSecondary)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 22)
+    }
+
+    /// Absent entirely for a plain skater: with one mode available there is
+    /// nothing to switch between, and an inert control reads as broken.
+    @ViewBuilder
+    private var modeSwitcher: some View {
+        if modeCoordinator.isSwitcherVisible(given: capabilities) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("VIEWING AS").scSectionLabel()
+
+                HStack(spacing: 8) {
+                    ForEach(modeCoordinator.available(given: capabilities), id: \.self) { mode in
+                        let isActive = mode == modeCoordinator.activeMode
+                        Button {
+                            modeCoordinator.select(mode, given: capabilities)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: mode.systemImage)
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(mode.label.uppercased())
+                                    .font(SCFont.headingFixed(11))
                             }
+                            .foregroundStyle(isActive ? SCColor.background : SCColor.textPrimary)
+                            .padding(.horizontal, 12)
+                            .frame(height: 34)
+                            .background(isActive ? SCColor.accent : .clear)
+                            .overlay(
+                                Capsule().stroke(
+                                    isActive ? SCColor.accent : SCColor.border,
+                                    lineWidth: 1.5
+                                )
+                            )
+                            .clipShape(Capsule())
                         }
-                        .padding(.vertical, 6)
-                    }
-                }
-
-                Section {
-                    Button {
-                        showProfile = true
-                    } label: {
-                        Label("My Profile", systemImage: "person.circle")
-                    }
-                }
-
-                Section {
-                    Button(role: .destructive) {
-                        Task { await authManager.signOut() }
-                    } label: {
-                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isActive ? [.isSelected, .isButton] : .isButton)
                     }
                 }
             }
-            .navigationTitle("Menu")
-            .navigationDestination(isPresented: $showProfile) {
-                if let id = authManager.currentProfile?.id {
-                    SkaterProfileScreen(userID: id)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Viewing as")
+        }
+    }
+
+    private var rows: some View {
+        VStack(spacing: 0) {
+            row(title: "My profile", systemImage: "person", action: onSelectProfile)
+            row(title: "Bookmarks", systemImage: "bookmark") { onSelect(.bookmarks) }
+            row(title: "Opportunities", systemImage: "briefcase") { onSelect(.opportunities) }
+            row(title: "Messages", systemImage: "bubble.left", action: onSelectMessages)
+            row(title: "Transactions", systemImage: "creditcard") { onSelect(.transactions) }
+
+            // A live filmer has no use for the recruitment pitch, so the row
+            // becomes their tools instead. This also gives EarningsScreen --
+            // and through it PayoutsScreen -- its first real entry point.
+            if isFilmer {
+                row(
+                    title: "Filmer tools",
+                    systemImage: "slider.horizontal.3",
+                    tint: SCColor.accent
+                ) { onSelect(.filmerTools) }
+            } else {
+                row(
+                    title: "Earn with Spot Check",
+                    systemImage: "dollarsign.circle",
+                    tint: SCColor.accent
+                ) { onSelect(.becomeFilmer) }
+            }
+
+            // The canvas shows both rows to everyone with "Filmers"/"Industry"
+            // as decorative tags. Gating them is a product rule beyond what the
+            // artboard draws -- the tag stays as a label for what the row is.
+            if isFilmer {
+                row(title: "Filming requests", systemImage: "safari", tag: "Filmers") {
+                    onSelect(.filmingRequests)
                 }
+            }
+            if isIndustry {
+                row(title: "Scout skaters", systemImage: "magnifyingglass", tag: "Industry") {
+                    onSelect(.scoutSkaters)
+                }
+            }
+            row(title: "Notifications", systemImage: "bell") {}
+            row(title: "Settings", systemImage: "gearshape") {}
+            row(
+                title: "Sign out",
+                systemImage: "rectangle.portrait.and.arrow.right",
+                tint: SCColor.danger,
+                showsBottomDivider: true,
+                action: onSignOut
+            )
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func row(
+        title: String,
+        systemImage: String,
+        tint: Color = SCColor.textPrimary,
+        tag: String? = nil,
+        showsBottomDivider: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17))
+                    .frame(width: 20)
+                    .foregroundStyle(tint == SCColor.textPrimary ? SCColor.textSecondary : tint)
+                Text(title)
+                    .font(SCFont.headingFixed(15))
+                    .foregroundStyle(tint)
+                Spacer(minLength: 8)
+                if let tag {
+                    SCTag(
+                        text: tag,
+                        foreground: SCColor.textSecondary,
+                        background: SCColor.border,
+                        size: 9.5
+                    )
+                }
+            }
+            .frame(height: 56)
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .top) {
+            SCColor.border.frame(height: 1)
+        }
+        .overlay(alignment: .bottom) {
+            if showsBottomDivider {
+                SCColor.border.frame(height: 1)
             }
         }
     }
+}
+
+#Preview {
+    ZStack(alignment: .leading) {
+        Color.black.opacity(0.6).ignoresSafeArea()
+        MenuScreen(
+            onClose: {},
+            onSelectProfile: {},
+            onSelectMessages: {},
+            onSelect: { _ in },
+            onSignOut: {}
+        )
+    }
+    .environment(AuthManager())
+    .environment(ModeCoordinator())
 }

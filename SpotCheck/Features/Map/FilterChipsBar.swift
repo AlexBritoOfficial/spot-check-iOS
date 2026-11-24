@@ -23,6 +23,8 @@ struct FilterChipsBar: View {
             }
             .padding(.horizontal)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Filters")
     }
 
     private func toggle<T: Hashable>(_ value: T, in set: inout Set<T>) {

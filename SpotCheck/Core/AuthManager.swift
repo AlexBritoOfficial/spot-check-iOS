@@ -17,10 +17,15 @@ enum AuthState: Equatable {
 final class AuthManager {
     private(set) var state: AuthState = .loading
     private(set) var currentProfile: Profile?
+    /// Only capabilities at status `.active`. Everything that gates on a
+    /// capability checks membership here, so a paused filmer is excluded by
+    /// construction rather than by each call site remembering to check.
+    private(set) var currentCapabilities: Set<Capability> = []
     private(set) var lastError: String?
 
     private let client: SupabaseClient
     private let profiles: ProfilesRepository
+    private let capabilities: CapabilitiesRepository
 
     // No deinit/cancellation: this is a single, app-lifetime root object
     // (held by SpotCheckApp's @State), so the listener task's lifetime is
@@ -29,6 +34,7 @@ final class AuthManager {
     init(client: SupabaseClient = SupabaseClientProvider.shared) {
         self.client = client
         self.profiles = ProfilesRepository(client: client)
+        self.capabilities = CapabilitiesRepository(client: client)
         Task { [weak self] in
             guard let self else { return }
             await self.observeAuthState()
@@ -45,10 +51,12 @@ final class AuthManager {
                 } else {
                     state = .signedOut
                     currentProfile = nil
+                    currentCapabilities = []
                 }
             case .signedOut, .userDeleted:
                 state = .signedOut
                 currentProfile = nil
+                currentCapabilities = []
             case .passwordRecovery, .mfaChallengeVerified:
                 break
             }
@@ -104,5 +112,15 @@ final class AuthManager {
     func refreshProfile() async {
         guard case .signedIn(let userID) = state else { return }
         currentProfile = try? await profiles.profile(id: userID)
+
+        // A failed fetch leaves capabilities empty rather than stale: the safe
+        // direction is to show less, never to leave a revoked capability's
+        // surfaces reachable because the network blipped.
+        let rows = (try? await capabilities.capabilities(for: userID)) ?? []
+        currentCapabilities = Set(rows.filter(\.isActive).map(\.capability))
+    }
+
+    func has(_ capability: Capability) -> Bool {
+        currentCapabilities.contains(capability)
     }
 }

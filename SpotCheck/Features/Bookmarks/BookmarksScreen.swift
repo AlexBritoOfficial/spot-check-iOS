@@ -1,9 +1,13 @@
 import SwiftUI
 
+/// The canvas's `Bookmarks` artboard: its own header with a spot count,
+/// and 72pt-thumbnail cards -- dashed-bordered for your own private
+/// spots.
 struct BookmarksScreen: View {
     @Environment(AuthManager.self) private var authManager
     @Environment(SpotsStore.self) private var spotsStore
     @Environment(BookmarksStore.self) private var bookmarksStore
+    @Environment(\.dismiss) private var dismiss
 
     @State private var isLoading = false
     @State private var spotIDForDetail: UUID?
@@ -24,40 +28,43 @@ struct BookmarksScreen: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                header
+
                 if totalCount == 0, !isLoading {
                     ContentUnavailableView(
                         "No bookmarks yet",
                         systemImage: "bookmark",
                         description: Text("Bookmark a spot from its detail page to see it here.")
                     )
+                    .frame(maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 12) {
                             if !savedSpots.isEmpty {
-                                section(title: "SAVED", spots: savedSpots)
+                                Text("SAVED").scSectionLabel()
+                                ForEach(savedSpots) { spot in
+                                    row(for: spot, isPrivate: false)
+                                }
                             }
+
                             if !privateOwnedSpots.isEmpty {
-                                section(title: "YOUR PRIVATE SPOTS", spots: privateOwnedSpots, dashed: true)
+                                Text("YOUR PRIVATE SPOTS")
+                                    .scSectionLabel()
+                                    .padding(.top, 14)
+                                ForEach(privateOwnedSpots) { spot in
+                                    row(for: spot, isPrivate: true)
+                                }
                             }
                         }
-                        .padding(20)
+                        .padding(SCMetric.screenPadding)
                     }
-                    .background(SCColor.background)
                     .refreshable { await load() }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(SCColor.background)
-            .navigationTitle("Bookmarks")
-            .toolbarBackground(SCColor.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Text("\(totalCount) spots")
-                        .font(.system(size: 13))
-                        .foregroundStyle(SCColor.textSecondary)
-                }
-            }
+            .toolbar(.hidden)
             .task { await load() }
             .navigationDestination(item: $spotIDForDetail) { id in
                 SpotDetailScreen(spotID: id)
@@ -65,47 +72,72 @@ struct BookmarksScreen: View {
         }
     }
 
-    private func section(title: String, spots: [Spot], dashed: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).scFieldLabel()
-            ForEach(spots) { spot in
-                row(for: spot, dashed: dashed)
+    private var header: some View {
+        HStack(spacing: 6) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(SCColor.textPrimary)
+                    .frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+
+            Text("Bookmarks")
+                .font(SCFont.heading(22))
+                .foregroundStyle(SCColor.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(totalCount == 1 ? "1 spot" : "\(totalCount) spots")
+                .font(.system(size: 13))
+                .foregroundStyle(SCColor.textSecondary)
         }
+        .padding(.leading, 10)
+        .padding(.trailing, SCMetric.screenPadding)
+        .padding(.top, SCMetric.headerTop(52))
+        .padding(.bottom, 14)
+        .overlay(alignment: .bottom) { SCColor.border.frame(height: 1) }
     }
 
-    private func row(for spot: Spot, dashed: Bool) -> some View {
+    private func row(for spot: Spot, isPrivate: Bool) -> some View {
         Button {
             spotIDForDetail = spot.id
         } label: {
             HStack(spacing: 14) {
-                RoundedRectangle(cornerRadius: SCRadius.control - 2)
-                    .fill(SCColor.border)
+                SCMediaPlaceholder(cornerRadius: 10)
                     .frame(width: 72, height: 72)
-                    .overlay(Image(systemName: "photo").foregroundStyle(SCColor.textSecondary))
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(spot.name)
                             .font(SCFont.headingFixed(16))
                             .foregroundStyle(SCColor.textPrimary)
                         Spacer()
-                        if !spot.isPublic {
-                            Label("PRIVATE", systemImage: "lock.fill")
-                                .font(SCFont.headingFixed(10))
-                                .foregroundStyle(SCColor.textSecondary)
+                        if isPrivate {
+                            HStack(spacing: 4) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 10))
+                                Text("PRIVATE")
+                                    .font(SCFont.headingFixed(10))
+                            }
+                            .foregroundStyle(SCColor.textSecondary)
                         } else if let distance = spot.distanceMeters {
                             Text(String(format: "%.1f mi", distance / 1609.34))
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(SCColor.textSecondary)
                         }
                     }
+
                     if let description = spot.description, !description.isEmpty {
                         Text(description)
                             .font(.system(size: 13))
                             .foregroundStyle(SCColor.textSecondary)
                             .lineLimit(1)
                     }
+
                     HStack(spacing: 6) {
                         Badge(text: spot.spotType.rawValue)
                         Badge.difficulty(spot.difficulty)
@@ -116,7 +148,10 @@ struct BookmarksScreen: View {
             .background(SCColor.surface)
             .overlay(
                 RoundedRectangle(cornerRadius: SCRadius.card)
-                    .strokeBorder(dashed ? SCColor.textSecondary : SCColor.border, style: StrokeStyle(lineWidth: 1, dash: dashed ? [5, 4] : []))
+                    .strokeBorder(
+                        isPrivate ? SCColor.textSecondary : SCColor.border,
+                        style: StrokeStyle(lineWidth: 1, dash: isPrivate ? [5, 4] : [])
+                    )
             )
             .clipShape(RoundedRectangle(cornerRadius: SCRadius.card))
         }
