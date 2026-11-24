@@ -8,10 +8,12 @@ struct SignupView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var homeCity = ""
+    @State private var isAdult = false
     @State private var isSubmitting = false
 
     private var canSubmit: Bool {
-        !username.isEmpty && !email.isEmpty && !password.isEmpty && !homeCity.isEmpty && !isSubmitting
+        !username.isEmpty && !email.isEmpty && !password.isEmpty && !homeCity.isEmpty
+            && isAdult && !isSubmitting
     }
 
     var body: some View {
@@ -24,6 +26,7 @@ struct SignupView: View {
                         Image(systemName: "chevron.left")
                             .foregroundStyle(SCColor.textPrimary)
                     }
+                    .accessibilityLabel("Back to sign in")
                     Spacer()
                     Wordmark(size: 16)
                     Spacer()
@@ -45,6 +48,8 @@ struct SignupView: View {
                     SCTextField(label: "Email", placeholder: "you@example.com", text: $email, contentType: .emailAddress, keyboard: .emailAddress)
                     SCTextField(label: "Password", placeholder: "••••••••", text: $password, contentType: .password, isSecure: true)
                     SCTextField(label: "Home city", placeholder: "e.g. Portland, OR", text: $homeCity, contentType: .addressCity)
+
+                    adultConfirmation
 
                     if let error = authManager.lastError {
                         Text(error)
@@ -94,6 +99,42 @@ struct SignupView: View {
         .background(SCColor.background)
         .scrollDismissesKeyboard(.interactively)
         .toolbar(.hidden)
+    }
+
+    /// The canvas's required 18+ checkbox. Spot Check is 18+ (see
+    /// `Trust/IDVerifyScreen`), so this gates the submit button rather than
+    /// being advisory. It is a self-declaration only -- the real age check is
+    /// the ID verification that booking, paying and getting paid require.
+    private var adultConfirmation: some View {
+        Button {
+            isAdult.toggle()
+        } label: {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: SCRadius.badge)
+                    .fill(isAdult ? SCColor.accent : .clear)
+                    .frame(width: 20, height: 20)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: SCRadius.badge)
+                            .stroke(isAdult ? SCColor.accent : SCColor.border, lineWidth: 1.5)
+                    }
+                    .overlay {
+                        if isAdult {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .black))
+                                .foregroundStyle(SCColor.background)
+                        }
+                    }
+
+                Text("I'm 18 or older")
+                    .font(.system(size: 14.5))
+                    .foregroundStyle(SCColor.textPrimary)
+
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isAdult ? [.isSelected, .isButton] : .isButton)
     }
 
     private func signUp() async {

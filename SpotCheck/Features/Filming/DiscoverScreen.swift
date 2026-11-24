@@ -98,6 +98,8 @@ struct DiscoverScreen: View {
                     .padding(.horizontal, SCMetric.screenPadding)
             }
             .padding(.horizontal, -SCMetric.screenPadding)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Filter requests")
         }
         .padding(.horizontal, SCMetric.screenPadding)
         .padding(.top, SCMetric.headerTop(56))

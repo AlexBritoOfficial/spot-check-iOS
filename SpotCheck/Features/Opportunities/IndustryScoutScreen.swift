@@ -57,6 +57,8 @@ struct IndustryScoutScreen: View {
                 .padding(.horizontal, SCMetric.screenPadding)
             }
             .padding(.horizontal, -SCMetric.screenPadding)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Filter skaters")
         }
         .padding(.horizontal, SCMetric.screenPadding)
         .padding(.top, SCMetric.headerTop(52))

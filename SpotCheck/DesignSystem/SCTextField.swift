@@ -75,6 +75,7 @@ struct SCTextField<Accessory: View>: View {
                             Image(systemName: isRevealed ? "eye.slash" : "eye")
                                 .foregroundStyle(SCColor.textSecondary)
                         }
+                        .accessibilityLabel(isRevealed ? "Hide password" : "Show password")
                         .padding(.trailing, 16)
                     }
                 }

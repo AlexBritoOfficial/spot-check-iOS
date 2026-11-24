@@ -90,6 +90,8 @@ struct ProRequestScreen: View {
             ],
             selection: $replyKind
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Reply type")
     }
 
     private var attachClipButton: some View {
