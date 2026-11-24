@@ -171,6 +171,149 @@ struct SCStepList: View {
     }
 }
 
+/// The canvas's status timeline: a vertical run of steps whose markers
+/// carry state, optionally joined by a connecting rule.
+///
+/// Distinct from `SCStepList`, whose markers are always numbers and which
+/// never draws a connector. This is what Checkout's "WHEN YOU'RE CHARGED",
+/// TransactionDetail's "STATUS" and Verification's checklist all draw.
+struct SCTimeline: View {
+    enum Marker {
+        /// Finished: filled green with a check.
+        case done
+        /// The step the user is waiting on: a thick accent ring.
+        case current
+        /// Not started: a hairline ring.
+        case pending
+        /// Under review: a three-quarter accent arc.
+        case inProgress
+        /// Gated behind an earlier step.
+        case locked
+        case numbered(Int)
+    }
+
+    /// The canvas uses Archivo Black titles on Verification's checklist and
+    /// semibold body titles on the payment timelines.
+    enum TitleStyle {
+        case body, heading
+    }
+
+    struct Step: Identifiable {
+        let id = UUID()
+        let title: String
+        var detail: String?
+        var detailColor: Color = SCColor.textSecondary
+        var marker: Marker
+
+        init(
+            title: String,
+            detail: String? = nil,
+            detailColor: Color = SCColor.textSecondary,
+            marker: Marker
+        ) {
+            self.title = title
+            self.detail = detail
+            self.detailColor = detailColor
+            self.marker = marker
+        }
+    }
+
+    let steps: [Step]
+    var showsConnector: Bool = true
+    var titleStyle: TitleStyle = .body
+    var markerSize: CGFloat = 24
+    var spacing: CGFloat = 14
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                let isLast = index == steps.count - 1
+
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(spacing: 0) {
+                        markerView(step.marker)
+                        if showsConnector && !isLast {
+                            Rectangle()
+                                .fill(SCColor.border)
+                                .frame(width: 2)
+                                .frame(maxHeight: .infinity)
+                        }
+                    }
+                    .frame(width: markerSize)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(step.title)
+                            .font(titleFont)
+                            .foregroundStyle(SCColor.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let detail = step.detail {
+                            Text(detail)
+                                .font(.system(size: detailSize))
+                                .foregroundStyle(step.detailColor)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.bottom, isLast ? 0 : spacing)
+
+                    Spacer(minLength: 0)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var titleFont: Font {
+        switch titleStyle {
+        case .body: .system(size: 14, weight: .semibold)
+        case .heading: SCFont.headingFixed(14)
+        }
+    }
+
+    private var detailSize: CGFloat {
+        titleStyle == .heading ? 13 : 12.5
+    }
+
+    @ViewBuilder
+    private func markerView(_ marker: Marker) -> some View {
+        switch marker {
+        case .done:
+            Image(systemName: "checkmark")
+                .font(.system(size: markerSize * 0.46, weight: .black))
+                .foregroundStyle(SCColor.background)
+                .frame(width: markerSize, height: markerSize)
+                .background(SCColor.success)
+                .clipShape(Circle())
+        case .current:
+            Circle()
+                .stroke(SCColor.accent, lineWidth: 2.5)
+                .frame(width: markerSize, height: markerSize)
+        case .pending:
+            Circle()
+                .stroke(SCColor.border, lineWidth: 1.5)
+                .frame(width: markerSize, height: markerSize)
+        case .inProgress:
+            Circle()
+                .trim(from: 0, to: 0.75)
+                .stroke(SCColor.accent, lineWidth: 2.5)
+                .rotationEffect(.degrees(-90))
+                .frame(width: markerSize, height: markerSize)
+        case .locked:
+            Image(systemName: "lock.fill")
+                .font(.system(size: markerSize * 0.42, weight: .bold))
+                .foregroundStyle(SCColor.textSecondary)
+                .frame(width: markerSize, height: markerSize)
+                .overlay(Circle().stroke(SCColor.border, lineWidth: 1.5))
+        case .numbered(let number):
+            Text("\(number)")
+                .font(SCFont.headingFixed(markerSize * 0.46))
+                .foregroundStyle(SCColor.background)
+                .frame(width: markerSize, height: markerSize)
+                .background(SCColor.accent)
+                .clipShape(Circle())
+        }
+    }
+}
+
 /// A labeled switch row inside a card (PostClip's challenge entry,
 /// FilmerRates' availability toggles).
 struct SCToggleRow: View {

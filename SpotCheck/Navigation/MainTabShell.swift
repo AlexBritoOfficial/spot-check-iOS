@@ -113,6 +113,9 @@ struct MainTabShell: View {
         switch destination {
         case .bookmarks: BookmarksScreen()
         case .opportunities: OpportunitiesScreen()
+        // TransactionsScreen pushes its receipt, and doesn't own a stack so
+        // that PayoutsScreen can push it too.
+        case .transactions: NavigationStack { TransactionsScreen() }
         case .becomeFilmer: ProApplyScreen()
         case .filmingRequests: DiscoverScreen()
         case .scoutSkaters: IndustryScoutScreen()

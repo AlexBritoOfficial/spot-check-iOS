@@ -12,6 +12,7 @@ final class MenuCoordinator {
     enum Destination: Identifiable {
         case bookmarks
         case opportunities
+        case transactions
         case becomeFilmer
         case filmingRequests
         case scoutSkaters

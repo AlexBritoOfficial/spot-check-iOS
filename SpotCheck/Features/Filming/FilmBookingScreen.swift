@@ -4,9 +4,9 @@ import SwiftUI
 /// a background-checked filmer. The WHERE tray swaps the block beneath
 /// it between a skatepark picker and a dropped-pin map preview (the
 /// artboard's two `sc-if` variants, both previewed below); that preview
-/// is decorative art, not a live map. Selections are local view state
-/// and every action is intentionally unwired pending per-feature
-/// planning.
+/// is decorative art, not a live map. Selections are local view state;
+/// "Request session" opens the canvas's `Checkout` artboard, and the rest
+/// stays unwired pending per-feature planning.
 struct FilmBookingScreen: View {
     enum Place {
         case skatepark, streetPin
@@ -20,11 +20,23 @@ struct FilmBookingScreen: View {
     @State private var lighting = 1
     @State private var securityRisk = 1
 
+    @State private var showsCheckout = false
+
     init(place: Place = .streetPin) {
         _place = State(initialValue: place)
     }
 
     var body: some View {
+        NavigationStack {
+            content
+                .toolbar(.hidden)
+                .navigationDestination(isPresented: $showsCheckout) {
+                    CheckoutScreen()
+                }
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             header
 
@@ -52,7 +64,7 @@ struct FilmBookingScreen: View {
                         .foregroundStyle(SCColor.textPrimary)
                 }
 
-                Button("Request session") {}
+                Button("Request session") { showsCheckout = true }
                     .buttonStyle(.scPrimary)
             }
         }
@@ -219,8 +231,8 @@ struct FilmBookingScreen: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("PAYMENT").scSectionLabel()
 
-            paymentRow("Filmer rate", value: "$[RATE]")
-            paymentRow("Spot Check fee (15%)", value: "$[FEE]")
+            SCDetailRow(label: "Filmer rate", value: "$[RATE]")
+            SCDetailRow(label: "Spot Check fee (15%)", value: "$[FEE]")
 
             SCColor.border.frame(height: 1)
 
@@ -269,18 +281,6 @@ struct FilmBookingScreen: View {
         .scCard(cornerRadius: SCRadius.cardSmall)
     }
 
-    private func paymentRow(_ label: String, value: String) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(.system(size: 14))
-                .foregroundStyle(SCColor.textBody)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-            Text(value)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(SCColor.textPrimary)
-        }
-    }
 }
 
 /// The artboard's 40pt WHERE tray: shorter and label-only, where

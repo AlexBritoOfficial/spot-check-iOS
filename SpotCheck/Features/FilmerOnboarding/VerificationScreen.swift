@@ -93,96 +93,45 @@ struct VerificationScreen: View {
     }
 
     private var checklist: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            checklistRow(
-                marker: .done,
-                title: "ID verified",
-                detail: "Government ID and selfie match"
-            )
-            checklistRow(
-                marker: .done,
-                title: "Consent signed",
-                detail: "You authorized the background check"
-            )
-            checklistRow(
-                marker: status.isPassed ? .done : .inProgress,
-                title: "Gear & portfolio review",
-                detail: status.isPassed
-                    ? "Pro camera and portfolio approved"
-                    : "Filming & photos: in review by our team",
-                detailColor: status.isPassed ? SCColor.success : SCColor.accent
-            )
-            checklistRow(
-                marker: status.isPassed ? .done : .inProgress,
-                title: "Background check",
-                detail: status.isPassed ? "Passed" : "In review with our screening partner",
-                detailColor: status.isPassed ? SCColor.success : SCColor.accent
-            )
-            checklistRow(
-                marker: status.isPassed ? .numbered(4) : .locked,
-                title: "Set rates & go live",
-                detail: status.isPassed ? "Ready when you are" : "Unlocks after your check passes"
-            )
-        }
+        SCTimeline(
+            steps: [
+                .init(
+                    title: "ID verified",
+                    detail: "Government ID and selfie match",
+                    marker: .done
+                ),
+                .init(
+                    title: "Consent signed",
+                    detail: "You authorized the background check",
+                    marker: .done
+                ),
+                .init(
+                    title: "Gear & portfolio review",
+                    detail: status.isPassed
+                        ? "Pro camera and portfolio approved"
+                        : "Filming & photos: in review by our team",
+                    detailColor: status.isPassed ? SCColor.success : SCColor.accent,
+                    marker: status.isPassed ? .done : .inProgress
+                ),
+                .init(
+                    title: "Background check",
+                    detail: status.isPassed ? "Passed" : "In review with our screening partner",
+                    detailColor: status.isPassed ? SCColor.success : SCColor.accent,
+                    marker: status.isPassed ? .done : .inProgress
+                ),
+                .init(
+                    title: "Set rates & go live",
+                    detail: status.isPassed ? "Ready when you are" : "Unlocks after your check passes",
+                    marker: status.isPassed ? .numbered(4) : .locked
+                )
+            ],
+            showsConnector: false,
+            titleStyle: .heading,
+            markerSize: 26,
+            spacing: 18
+        )
         .padding(18)
         .scCard()
-    }
-
-    private enum ChecklistMarker {
-        case done, inProgress, locked
-        case numbered(Int)
-    }
-
-    private func checklistRow(
-        marker: ChecklistMarker,
-        title: String,
-        detail: String,
-        detailColor: Color = SCColor.textSecondary
-    ) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            markerView(marker)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(SCFont.headingFixed(14))
-                    .foregroundStyle(SCColor.textPrimary)
-                Text(detail)
-                    .font(.system(size: 13))
-                    .foregroundStyle(detailColor)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func markerView(_ marker: ChecklistMarker) -> some View {
-        switch marker {
-        case .done:
-            Image(systemName: "checkmark")
-                .font(.system(size: 12, weight: .black))
-                .foregroundStyle(SCColor.background)
-                .frame(width: 26, height: 26)
-                .background(SCColor.success)
-                .clipShape(Circle())
-        case .inProgress:
-            Circle()
-                .trim(from: 0, to: 0.75)
-                .stroke(SCColor.accent, lineWidth: 2.5)
-                .rotationEffect(.degrees(-90))
-                .frame(width: 26, height: 26)
-        case .locked:
-            Image(systemName: "lock.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(SCColor.textSecondary)
-                .frame(width: 26, height: 26)
-                .overlay(Circle().stroke(SCColor.border, lineWidth: 1.5))
-        case .numbered(let number):
-            Text("\(number)")
-                .font(SCFont.headingFixed(12))
-                .foregroundStyle(SCColor.background)
-                .frame(width: 26, height: 26)
-                .background(SCColor.accent)
-                .clipShape(Circle())
-        }
     }
 
     private var serviceSection: some View {

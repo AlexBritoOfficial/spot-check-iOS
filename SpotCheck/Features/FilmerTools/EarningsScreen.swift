@@ -2,12 +2,23 @@ import SwiftUI
 
 /// The canvas's `Earnings` artboard -- a filmer's week, split between
 /// paid out and held funds. Amounts stay the artboard's `$[X]`
-/// placeholders; payout settings are intentionally unwired pending
-/// per-feature planning.
+/// placeholders. "Payout settings" opens the canvas's `Payouts` artboard.
 struct EarningsScreen: View {
     @Environment(\.dismiss) private var dismiss
 
+    @State private var showsPayouts = false
+
     var body: some View {
+        NavigationStack {
+            content
+                .toolbar(.hidden)
+                .navigationDestination(isPresented: $showsPayouts) {
+                    PayoutsScreen()
+                }
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             SCNavHeader(
                 title: "Earnings",
@@ -27,7 +38,7 @@ struct EarningsScreen: View {
             }
 
             SCFooterBar {
-                Button("Payout settings") {}
+                Button("Payout settings") { showsPayouts = true }
                     .buttonStyle(.scSecondary(fontSize: 14.5))
             }
         }

@@ -182,19 +182,10 @@ struct ProReplyScreen: View {
 
     private var payoutCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            payoutRow(label: "Skater paid", value: "$[PRICE]")
-            payoutRow(label: "Spot Check fee (20%)", value: "−$[FEE]")
+            SCDetailRow(label: "Skater paid", value: "$[PRICE]")
+            SCDetailRow(label: "Spot Check fee (20%)", value: "−$[FEE]")
             SCColor.border.frame(height: 1)
-            HStack {
-                Text("You earn")
-                    .fontWeight(.bold)
-                    .foregroundStyle(SCColor.textPrimary)
-                Spacer()
-                Text("$[PAYOUT]")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(SCColor.textPrimary)
-            }
-            .font(.system(size: 14))
+            SCDetailRow(label: "You earn", value: "$[PAYOUT]", isTotal: true)
 
             SCNoteRow(
                 text: "Released as soon as you send your reply.",
@@ -204,15 +195,6 @@ struct ProReplyScreen: View {
         }
         .padding(16)
         .scCard(cornerRadius: SCRadius.cardSmall)
-    }
-
-    private func payoutRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label).foregroundStyle(SCColor.textBody)
-            Spacer()
-            Text(value).fontWeight(.semibold).foregroundStyle(SCColor.textPrimary)
-        }
-        .font(.system(size: 14))
     }
 }
 

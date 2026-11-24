@@ -61,6 +61,84 @@ struct SCStatTile: View {
     }
 }
 
+/// The canvas's `label … value` row, used by every money card it draws
+/// (FilmBooking's PAYMENT, ProReply's payout, Checkout's PRICE,
+/// TransactionDetail's BREAKDOWN, Payouts' HOW YOU'RE PAID).
+///
+/// `isTotal` is the canvas's final-row treatment: the label goes bold
+/// where the rows above it are regular weight.
+struct SCDetailRow: View {
+    let label: String
+    let value: String
+    var isTotal: Bool = false
+    var valueColor: Color = SCColor.textPrimary
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .font(.system(size: 14, weight: isTotal ? .bold : .regular))
+                .foregroundStyle(isTotal ? SCColor.textPrimary : SCColor.textBody)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Text(value)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(valueColor)
+        }
+    }
+}
+
+/// A card row led by a tinted 40pt icon tile, with a title, a muted
+/// subtitle and an optional trailing accessory. The canvas uses it for
+/// saved payment methods, the payout bank account and tax details, and
+/// the receipt's download/help actions.
+struct SCIconDetailRow<Trailing: View>: View {
+    let systemImage: String
+    let title: String
+    var subtitle: String?
+    @ViewBuilder var trailing: () -> Trailing
+
+    init(
+        systemImage: String,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }
+    ) {
+        self.systemImage = systemImage
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(SCColor.accent)
+                .frame(width: 40, height: 40)
+                .background(SCColor.border)
+                .clipShape(RoundedRectangle(cornerRadius: SCRadius.control))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14.5, weight: .semibold))
+                    .foregroundStyle(SCColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(SCColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            trailing()
+        }
+        .padding(14)
+        .scCard(cornerRadius: SCRadius.cardSmall)
+    }
+}
+
 /// The tinted advisory block the canvas uses for trust/safety copy
 /// (ProApply's background-check note, PostClip's GPS-stripping note):
 /// a 10%-tint fill with a matching border.

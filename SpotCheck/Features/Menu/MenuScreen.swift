@@ -34,6 +34,8 @@ struct MenuScreen: View {
             SCColor.border.frame(width: 1)
         }
         .ignoresSafeArea()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Main menu")
     }
 
     private var header: some View {
@@ -80,6 +82,7 @@ struct MenuScreen: View {
             row(title: "Bookmarks", systemImage: "bookmark") { onSelect(.bookmarks) }
             row(title: "Opportunities", systemImage: "briefcase") { onSelect(.opportunities) }
             row(title: "Messages", systemImage: "bubble.left", action: onSelectMessages)
+            row(title: "Transactions", systemImage: "creditcard") { onSelect(.transactions) }
             row(
                 title: "Earn with Spot Check",
                 systemImage: "dollarsign.circle",
