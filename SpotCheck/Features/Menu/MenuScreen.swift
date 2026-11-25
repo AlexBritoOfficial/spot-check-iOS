@@ -135,6 +135,11 @@ struct MenuScreen: View {
             row(title: "Transactions", systemImage: "creditcard") { onSelect(.transactions) }
             row(title: "Request a filmer", systemImage: "video.badge.plus") { onSelect(.requestFilmer) }
             row(title: "My requests", systemImage: "list.bullet.rectangle") { onSelect(.myRequests) }
+            // Booking, paying and getting paid all need it (IDVerifyScreen),
+            // so the row stays until it's done, then goes for good.
+            if !authManager.isVerifiedAdult {
+                row(title: "Verify your ID", systemImage: "person.text.rectangle") { onSelect(.verifyID) }
+            }
 
             // A live filmer has no use for the recruitment pitch, so the row
             // becomes their tools instead. This also gives EarningsScreen --

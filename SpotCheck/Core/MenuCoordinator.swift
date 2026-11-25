@@ -22,6 +22,9 @@ final class MenuCoordinator {
         /// and to the requests they've made.
         case requestFilmer
         case myRequests
+        /// Not on the canvas's menu either: IDVerifyScreen had no way in.
+        /// Shown until the user is a verified adult.
+        case verifyID
 
         var id: Self { self }
     }
