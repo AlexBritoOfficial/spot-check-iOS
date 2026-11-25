@@ -37,15 +37,22 @@ final class IdentityVerificationFlow {
 
     private(set) var state: State = .loading
 
+    /// How often the screen re-reads while Stripe is checking.
+    static let processingCheckInterval: Duration = .seconds(3)
+
     private let api: IdentityVerificationAPI
     private let onVerified: @MainActor () async -> Void
+    private let sleep: @MainActor (Duration) async throws -> Void
 
     /// - Parameter onVerified: called once the user becomes a verified adult,
     ///   so session-wide state (the menu's "Verify your ID" row) can refresh.
+    /// - Parameter sleep: `Task.sleep`, replaceable so tests needn't wait.
     init(api: IdentityVerificationAPI = IdentityVerificationRepository(),
-         onVerified: @escaping @MainActor () async -> Void = {}) {
+         onVerified: @escaping @MainActor () async -> Void = {},
+         sleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.api = api
         self.onVerified = onVerified
+        self.sleep = sleep
     }
 
     func load(userID: UUID) async {
@@ -59,6 +66,16 @@ final class IdentityVerificationFlow {
             await setState(State(row: try await api.verification(for: userID)))
         } catch {
             state = .failed(message: error.edgeFunctionUserMessage)
+        }
+    }
+
+    /// Re-reads every `interval` while Stripe is checking, so the screen moves
+    /// on by itself when the webhook lands. Returns on a final answer, or when
+    /// the calling task is cancelled -- i.e. the screen goes away.
+    func keepCheckingWhileProcessing(userID: UUID, every interval: Duration = processingCheckInterval) async {
+        while state == .processing {
+            do { try await sleep(interval) } catch { return }
+            await refresh(userID: userID)
         }
     }
 
@@ -149,6 +166,8 @@ extension IdentityVerificationFlow.State {
         case refresh(title: String)
         case busy(title: String)
         case done
+        /// Inside "Earn with Spot Check": on to the portfolio step.
+        case continueOnboarding
     }
 
     var primaryAction: PrimaryAction {
@@ -161,6 +180,19 @@ extension IdentityVerificationFlow.State {
         case .processing: .refresh(title: "Check status")
         case .verified, .notAdult: .done
         }
+    }
+
+    /// Inside the filmer flow a verified adult continues to the next step,
+    /// while an under-18 gets Done: the flow ends there.
+    func primaryAction(in context: IDVerifyContext) -> PrimaryAction {
+        if context == .filmerOnboarding, self == .verified { return .continueOnboarding }
+        return primaryAction
+    }
+
+    /// The filmer flow can't be skipped past: Alex, 2026-11-25, wait for the
+    /// ID to be verified. From the menu it can, until there's nothing to do.
+    func offersSkip(in context: IDVerifyContext) -> Bool {
+        context == .standalone && primaryAction != .done
     }
 
     /// A line under the steps saying where things stand, when there is one.
@@ -196,4 +228,13 @@ extension IdentityVerificationFlow.State {
             "We couldn't verify your ID. Try again."
         }
     }
+}
+
+
+/// Where IDVerifyScreen was opened from.
+enum IDVerifyContext: Equatable {
+    /// The menu's "Verify your ID" row.
+    case standalone
+    /// Step 2 of "Earn with Spot Check".
+    case filmerOnboarding
 }

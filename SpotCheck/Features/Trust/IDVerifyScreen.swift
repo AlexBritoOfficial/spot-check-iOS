@@ -3,8 +3,19 @@ import SwiftUI
 /// The canvas's `IDVerify` artboard -- the 18+ ID and age check that
 /// gates booking and payouts. "Start verification" runs Stripe Identity
 /// through `IdentityVerificationFlow`; the result arrives by webhook, so the
-/// footer can also show "Check status" while Stripe decides.
+/// footer can also show "Check status" while Stripe decides, and re-checks
+/// by itself every few seconds while the screen is open.
+///
+/// Opened from "Earn with Spot Check" it is a step that can't be skipped:
+/// Continue unlocks once the user is a verified adult.
 struct IDVerifyScreen: View {
+    var context: IDVerifyContext = .standalone
+    /// The filmer flow's next step. Unused from the menu.
+    var onContinue: () -> Void = {}
+    /// Leaves the whole filmer flow (an under-18 ID ends it). Defaults to
+    /// closing just this screen.
+    var onLeave: (() -> Void)?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(AuthManager.self) private var authManager
 
@@ -75,7 +86,7 @@ struct IDVerifyScreen: View {
             SCFooterBar {
                 VStack(spacing: 10) {
                     primaryButton
-                    if state.primaryAction != .done {
+                    if state.offersSkip(in: context) {
                         Button("Skip for now") { dismiss() }
                             .buttonStyle(.scSecondary(fontSize: 14.5))
                     }
@@ -92,11 +103,17 @@ struct IDVerifyScreen: View {
             self.flow = flow
             await flow.load(userID: userID)
         }
+        // Restarts whenever "processing" begins or ends, and is cancelled
+        // when the screen goes away, which ends the loop.
+        .task(id: state == .processing) {
+            guard let flow, let userID, state == .processing else { return }
+            await flow.keepCheckingWhileProcessing(userID: userID)
+        }
     }
 
     @ViewBuilder
     private var primaryButton: some View {
-        switch state.primaryAction {
+        switch state.primaryAction(in: context) {
         case .start(let title):
             Button(title) { run { flow, userID in
                 await flow.start(userID: userID, present: StripeIdentitySheet.present(clientSecret:))
@@ -110,7 +127,10 @@ struct IDVerifyScreen: View {
                 .buttonStyle(.scPrimary(fontSize: 14.5))
                 .disabled(true)
         case .done:
-            Button("Done") { dismiss() }
+            Button("Done") { (onLeave ?? { dismiss() })() }
+                .buttonStyle(.scPrimary(fontSize: 14.5))
+        case .continueOnboarding:
+            Button("Continue") { onContinue() }
                 .buttonStyle(.scPrimary(fontSize: 14.5))
         }
     }
