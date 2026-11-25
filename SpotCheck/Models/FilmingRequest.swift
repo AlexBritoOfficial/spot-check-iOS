@@ -157,3 +157,23 @@ struct FilmerRates: Codable, Equatable, Sendable {
 
     static let columns = "hourly_rate_cents,park_drop_in_cents"
 }
+
+/// A filmer's prices and strikes, from `filmer_profiles`. Discover's
+/// "You earn" and "Your reliability" both read it.
+struct FilmerStanding: Codable, Equatable, Sendable {
+    let hourlyRateCents: Int?
+    let parkDropInCents: Int?
+    let strikeCount: Int
+
+    var rates: FilmerRates {
+        FilmerRates(hourlyRateCents: hourlyRateCents, parkDropInCents: parkDropInCents)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case hourlyRateCents = "hourly_rate_cents"
+        case parkDropInCents = "park_drop_in_cents"
+        case strikeCount = "strike_count"
+    }
+
+    static let columns = "hourly_rate_cents,park_drop_in_cents,strike_count"
+}
