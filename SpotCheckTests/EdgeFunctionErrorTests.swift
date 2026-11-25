@@ -43,6 +43,18 @@ final class EdgeFunctionErrorTests: XCTestCase {
         XCTAssertEqual(error.userMessage, EdgeFunctionError.genericMessage)
     }
 
+    /// The gateway in front of the functions answers in its own shape when a
+    /// function isn't reachable -- seen for real against a local stack with no
+    /// edge runtime: 503 `{"message":"name resolution failed"}`. That text is
+    /// for operators, so only a function's own body (it always has `error`)
+    /// gets its `message` shown.
+    func testTheGatewaysOwnMessageIsNeverShown() {
+        let error = EdgeFunctionError(statusCode: 503, body: json(#"{"message":"name resolution failed"}"#))
+
+        XCTAssertNil(error.code)
+        XCTAssertEqual(error.userMessage, EdgeFunctionError.genericMessage)
+    }
+
     func testA401AsksTheUserToSignInAgain() {
         let error = EdgeFunctionError(statusCode: 401, body: json(#"{"error":"Not signed in."}"#))
 
