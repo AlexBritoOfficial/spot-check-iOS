@@ -21,7 +21,7 @@ struct DiscoverScreen: View {
 
     private let filters = ["All", "Street", "Park", "Full edit"]
 
-    private var visibleRequests: [FilmingRequest] {
+    private var visibleRequests: [SampleFilmingRequest] {
         DiscoverScreen.sampleRequests.filter { request in
             let kindMatches = selectedFilter == 0
                 || request.kind == filters[selectedFilter].lowercased()
@@ -29,8 +29,8 @@ struct DiscoverScreen: View {
         }
     }
 
-    private var groupedByDay: [(day: String, items: [FilmingRequest])] {
-        visibleRequests.reduce(into: [(day: String, items: [FilmingRequest])]()) { groups, request in
+    private var groupedByDay: [(day: String, items: [SampleFilmingRequest])] {
+        visibleRequests.reduce(into: [(day: String, items: [SampleFilmingRequest])]()) { groups, request in
             if let index = groups.firstIndex(where: { $0.day == request.day }) {
                 groups[index].items.append(request)
             } else {
@@ -168,7 +168,7 @@ struct DiscoverScreen: View {
         .buttonStyle(.plain)
     }
 
-    private func requestCard(_ request: FilmingRequest) -> some View {
+    private func requestCard(_ request: SampleFilmingRequest) -> some View {
         let isAccepted = statuses[request.id] == .accepted
 
         return VStack(alignment: .leading, spacing: 12) {
@@ -264,7 +264,7 @@ struct DiscoverScreen: View {
     }
 }
 
-private struct FilmingRequest: Identifiable {
+private struct SampleFilmingRequest: Identifiable {
     let id: String
     let day: String
     let kind: String
@@ -276,8 +276,8 @@ private struct FilmingRequest: Identifiable {
 }
 
 private extension DiscoverScreen {
-    static let sampleRequests: [FilmingRequest] = [
-        FilmingRequest(
+    static let sampleRequests: [SampleFilmingRequest] = [
+        SampleFilmingRequest(
             id: "r1",
             day: "Today · Fri 20",
             kind: "street",
@@ -287,7 +287,7 @@ private extension DiscoverScreen {
             spot: "Copley Library · 0.8 mi",
             tags: ["Golden hour", "Security: sometimes"]
         ),
-        FilmingRequest(
+        SampleFilmingRequest(
             id: "r2",
             day: "Sat 21",
             kind: "park",
@@ -297,7 +297,7 @@ private extension DiscoverScreen {
             spot: "Lynch Family Skatepark · 2.1 mi",
             tags: ["Daylight", "Transition"]
         ),
-        FilmingRequest(
+        SampleFilmingRequest(
             id: "r3",
             day: "Sun 22",
             kind: "full edit",
@@ -307,7 +307,7 @@ private extension DiscoverScreen {
             spot: "Eggs + 2 more spots",
             tags: ["Multi-day", "Post-production"]
         ),
-        FilmingRequest(
+        SampleFilmingRequest(
             id: "r4",
             day: "Tue 24",
             kind: "street",

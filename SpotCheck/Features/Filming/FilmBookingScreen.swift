@@ -395,27 +395,27 @@ private struct DroppedPinMap: View {
     }
 }
 
-private struct FilmingPackage: Identifiable {
+private struct SampleFilmingPackage: Identifiable {
     let id: String
     let name: String
     let detail: String
     let price: String
 }
 
-private let filmingPackages: [FilmingPackage] = [
-    FilmingPackage(
+private let filmingPackages: [SampleFilmingPackage] = [
+    SampleFilmingPackage(
         id: "street",
         name: "Hourly Street Session",
         detail: "Grind out one spot, billed by the hour",
         price: "$[RATE]/hr"
     ),
-    FilmingPackage(
+    SampleFilmingPackage(
         id: "park",
         name: "Park Drop-In",
         detail: "A 30–60 min block at a skatepark",
         price: "$[RATE]"
     ),
-    FilmingPackage(
+    SampleFilmingPackage(
         id: "full",
         name: "Full Edit Package",
         detail: "Multi-day filming plus post-production",
