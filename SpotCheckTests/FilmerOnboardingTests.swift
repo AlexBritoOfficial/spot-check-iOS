@@ -356,7 +356,7 @@ final class FilmerOnboardingTests: XCTestCase {
         XCTAssertTrue(live)
         XCTAssertEqual(api.calls, ["saveRates", "goLive"])
         // Rates are on hold (Alex: "let's circle back"): the seeded filmer's.
-        XCTAssertEqual(api.savedRates, [FilmerRates(hourlyCents: 6000, parkDropInCents: 4000)])
+        XCTAssertEqual(api.savedRates, [FilmerRates(hourlyRateCents: 6000, parkDropInCents: 4000)])
         XCTAssertEqual(wentLive, 1)
     }
 

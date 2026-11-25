@@ -67,4 +67,19 @@ extension FunctionsClient {
             throw EdgeFunctionError(statusCode: statusCode, body: data)
         }
     }
+
+    /// The same, for a function that reads a JSON request body.
+    func call<Response>(
+        _ name: String,
+        body: some Encodable,
+        decode: (Data) throws -> Response
+    ) async throws -> Response {
+        do {
+            return try await invoke(name, options: FunctionInvokeOptions(body: body)) { data, _ in
+                try decode(data)
+            }
+        } catch FunctionsError.httpError(let statusCode, let data) {
+            throw EdgeFunctionError(statusCode: statusCode, body: data)
+        }
+    }
 }
