@@ -4,16 +4,20 @@ import SwiftUI
 /// and pros ("For filmers and pros" on the artboard).
 ///
 /// Reached from `FilmerTools/EarningsScreen`'s "Payout settings". The bank
-/// account and tax details are Stripe-managed, as the artboard says, so
-/// both rows stay unwired until Connect onboarding exists.
+/// account and tax details are Stripe-managed, as the artboard says: the
+/// PAYOUT ACCOUNT rows are read from `payout_accounts`, and "Update" opens
+/// Stripe's hosted Connect onboarding. The payout amounts and history below
+/// are still the artboard's placeholders.
 struct PayoutsScreen: View {
-    /// Changing the bank account means Stripe Connect onboarding, which does
-    /// not exist yet, so the presenter decides what this does.
-    var onUpdateBankAccount: () -> Void = {}
-
     @Environment(\.dismiss) private var dismiss
+    @Environment(AuthManager.self) private var authManager
 
     @State private var showsAllTransactions = false
+    @State private var payoutSetup = PayoutSetupFlow()
+
+    private var userID: UUID? {
+        if case .signedIn(let id) = authManager.state { id } else { nil }
+    }
 
     var body: some View {
         content
@@ -21,6 +25,18 @@ struct PayoutsScreen: View {
             .navigationDestination(isPresented: $showsAllTransactions) {
                 TransactionsScreen()
             }
+            .sheet(item: $payoutSetup.stripePage, onDismiss: stripeClosed) { page in
+                SafariView(url: page.url) { payoutSetup.stripePage = nil }
+                    .ignoresSafeArea()
+            }
+            .task {
+                if let userID { await payoutSetup.load(userID: userID) }
+            }
+    }
+
+    private func stripeClosed() {
+        guard let userID else { return }
+        Task { await payoutSetup.stripeClosed(userID: userID) }
     }
 
     private var content: some View {
@@ -74,27 +90,46 @@ struct PayoutsScreen: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("PAYOUT ACCOUNT").scSectionLabel()
 
-            Button(action: onUpdateBankAccount) {
+            let summary = payoutSetup.summary
+            Button {
+                Task { await payoutSetup.openStripe() }
+            } label: {
                 SCIconDetailRow(
                     systemImage: "building.columns",
-                    title: "Bank account •••• 6789",
-                    subtitle: "Verified · managed with Stripe"
+                    title: summary.bankTitle,
+                    subtitle: summary.bankSubtitle
                 ) {
-                    Text("Update")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(SCColor.accent)
+                    if payoutSetup.isOpeningStripe {
+                        ProgressView()
+                            .tint(SCColor.accent)
+                    } else {
+                        Text(summary.actionTitle)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(SCColor.accent)
+                    }
                 }
             }
             .buttonStyle(.plain)
+            .disabled(payoutSetup.isOpeningStripe || payoutSetup.isLoading)
 
             SCIconDetailRow(
                 systemImage: "doc.text",
                 title: "Tax details",
-                subtitle: "Complete · collected by Stripe for payouts"
+                subtitle: summary.taxSubtitle
             ) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .black))
-                    .foregroundStyle(SCColor.success)
+                if summary.isTaxComplete {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(SCColor.success)
+                }
+            }
+
+            if let message = payoutSetup.errorMessage {
+                SCNoteRow(
+                    text: message,
+                    systemImage: "exclamationmark.triangle.fill",
+                    iconColor: SCColor.danger
+                )
             }
         }
     }
@@ -160,4 +195,5 @@ struct PayoutsScreen: View {
     NavigationStack {
         PayoutsScreen()
     }
+    .environment(AuthManager())
 }
