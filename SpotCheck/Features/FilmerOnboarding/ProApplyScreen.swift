@@ -3,9 +3,15 @@ import SwiftUI
 /// Mirrors the canvas's "ProApply" artboard: the "Become a filmer" pitch
 /// that opens filmer onboarding. The artboard tops out in a bare back
 /// chevron rather than a titled bar, so this draws its own 44pt row
-/// instead of using `SCNavHeader`. Actions are intentionally unwired
-/// pending per-feature planning.
+/// instead of using `SCNavHeader`.
+///
+/// The step list puts "Verify your ID" first, unlike the canvas: Alex
+/// (2026-11-25) moved the ID check ahead of the portfolio.
 struct ProApplyScreen: View {
+    /// Where Continue goes is FilmerOnboardingView's call: the ID check, or
+    /// the portfolio for someone already verified.
+    var onContinue: () -> Void = {}
+
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -26,7 +32,7 @@ struct ProApplyScreen: View {
 
             SCFooterBar {
                 VStack(spacing: 10) {
-                    Button("Continue") {}
+                    Button("Continue") { onContinue() }
                         .buttonStyle(.scPrimary)
 
                     Text("You must be 18 or older to film for Spot Check.")
@@ -135,8 +141,8 @@ struct ProApplyScreen: View {
 
 private extension ProApplyScreen {
     static let onboardingSteps: [SCStepList.Step] = [
-        .init(title: "Show your gear and portfolio", isReached: true),
-        .init(title: "Verify your ID"),
+        .init(title: "Verify your ID", isReached: true),
+        .init(title: "Show your gear and portfolio"),
         .init(title: "Pass a background check"),
         .init(title: "Set your rates and go live")
     ]

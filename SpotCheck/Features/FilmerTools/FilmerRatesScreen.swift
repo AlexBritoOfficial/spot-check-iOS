@@ -5,13 +5,20 @@ import SwiftUI
 /// slots they're free.
 ///
 /// The availability grid is live local state (as the canvas mockup is) —
-/// the open-slot count below it is derived from the taps. Every other
-/// action is intentionally unwired pending per-feature planning.
+/// the open-slot count below it is derived from the taps, and isn't saved.
+///
+/// Rates are on hold (Alex, 2026-11-25: "let's circle back"), so "Go live"
+/// saves `FilmerRates.sample`. The two price fields show those values and
+/// are locked, rather than accepting input that would be ignored.
 struct FilmerRatesScreen: View {
+    var isGoingLive = false
+    var errorMessage: String?
+    var onGoLive: () -> Void = {}
+
     @Environment(\.dismiss) private var dismiss
 
-    @State private var hourlyRate = ""
-    @State private var parkDropIn = ""
+    @State private var hourlyRate = Self.dollars(FilmerRates.sample.hourlyRateCents)
+    @State private var parkDropIn = Self.dollars(FilmerRates.sample.parkDropInCents)
     @State private var fullEdit = ""
     @State private var openSlots = initiallyOpenSlots
 
@@ -25,12 +32,21 @@ struct FilmerRatesScreen: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    hourlyField
+                    SCNoteRow(
+                        text: "Sample rates for testing. Setting your own rates comes later.",
+                        systemImage: "info.circle",
+                        iconColor: SCColor.accent
+                    )
 
-                    HStack(alignment: .top, spacing: 10) {
-                        RateField(label: "Park drop-in", placeholder: "$[PRICE]", text: $parkDropIn, keyboard: .decimalPad)
-                        RateField(label: "Full edit", placeholder: "Quote on request", text: $fullEdit)
+                    Group {
+                        hourlyField
+
+                        HStack(alignment: .top, spacing: 10) {
+                            RateField(label: "Park drop-in", placeholder: "$[PRICE]", text: $parkDropIn, keyboard: .decimalPad)
+                            RateField(label: "Full edit", placeholder: "Quote on request", text: $fullEdit)
+                        }
                     }
+                    .disabled(true)
 
                     feeCard
 
@@ -42,12 +58,26 @@ struct FilmerRatesScreen: View {
             }
 
             SCFooterBar {
-                Button("Go live") {}
-                    .buttonStyle(.scPrimary(fontSize: 14.5))
+                VStack(spacing: 10) {
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 13))
+                            .foregroundStyle(SCColor.danger)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+                    Button(isGoingLive ? "Going live…" : "Go live") { onGoLive() }
+                        .buttonStyle(.scPrimary(fontSize: 14.5))
+                        .disabled(isGoingLive)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SCColor.background)
+    }
+
+    private static func dollars(_ cents: Int?) -> String {
+        cents.map { String($0 / 100) } ?? ""
     }
 
     private var hourlyField: some View {
