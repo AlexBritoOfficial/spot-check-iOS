@@ -111,10 +111,15 @@ struct MainTabShell: View {
         .sheet(item: $menuCoordinator.destination) { destination in
             // Passed explicitly: this modifier sits outside the
             // `.environment(...)` calls above, so its content can't rely on
-            // inheriting them.
+            // inheriting them. All of them, not just what today's rows need:
+            // a missing one is a crash on first read (Bookmarks was one).
             drawerDestination(destination)
                 .environment(spotsStore)
+                .environment(bookmarksStore)
                 .environment(filmingRequestsStore)
+                .environment(presenceService)
+                .environment(menuCoordinator)
+                .environment(modeCoordinator)
         }
     }
 
@@ -146,7 +151,11 @@ struct MainTabShell: View {
         // TransactionsScreen pushes its receipt, and doesn't own a stack so
         // that PayoutsScreen can push it too.
         case .transactions: NavigationStack { TransactionsScreen() }
-        case .becomeFilmer: ProApplyScreen()
+        case .becomeFilmer:
+            FilmerOnboardingView(
+                onClose: { menuCoordinator.destination = nil },
+                onWentLive: switchToFilmerDiscover
+            )
         // Earnings owns the push to Payouts, so this one row reaches both.
         case .filmerTools: EarningsScreen()
         case .filmingRequests: DiscoverScreen()
@@ -156,6 +165,20 @@ struct MainTabShell: View {
         case .myRequests:
             MyRequestsScreen(pinCoordinate: locationService.coordinate ?? LocationService.defaultCoordinate)
         case .verifyID: IDVerifyScreen()
+        }
+    }
+}
+
+extension MainTabShell {
+    /// Going live lands in filmer mode on Discover, as the canvas links it
+    /// (Alex, 2026-11-25: auto-switch). Capabilities have been refreshed by
+    /// then, so the mode coordinator accepts filmer.
+    private func switchToFilmerDiscover() {
+        modeCoordinator.select(.filmer, given: authManager.currentCapabilities)
+        menuCoordinator.destination = nil
+        if modeCoordinator.activeMode == .filmer {
+            selection = .discover
+            visited.insert(.discover)
         }
     }
 }
