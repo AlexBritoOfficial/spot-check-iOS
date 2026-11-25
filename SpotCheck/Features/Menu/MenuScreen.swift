@@ -133,6 +133,8 @@ struct MenuScreen: View {
             row(title: "Opportunities", systemImage: "briefcase") { onSelect(.opportunities) }
             row(title: "Messages", systemImage: "bubble.left", action: onSelectMessages)
             row(title: "Transactions", systemImage: "creditcard") { onSelect(.transactions) }
+            row(title: "Request a filmer", systemImage: "video.badge.plus") { onSelect(.requestFilmer) }
+            row(title: "My requests", systemImage: "list.bullet.rectangle") { onSelect(.myRequests) }
 
             // A live filmer has no use for the recruitment pitch, so the row
             // becomes their tools instead. This also gives EarningsScreen --

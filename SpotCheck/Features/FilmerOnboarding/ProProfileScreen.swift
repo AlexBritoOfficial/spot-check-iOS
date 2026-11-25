@@ -2,10 +2,17 @@ import SwiftUI
 
 /// The canvas's `ProProfile` artboard -- a filmer's public profile, as
 /// a skater sees it before requesting a session. Rates stay the
-/// artboard's `$[RATE]` placeholder; actions are intentionally unwired
-/// pending per-feature planning.
+/// artboard's `$[RATE]` placeholder.
+///
+/// "Request a session" opens booking with the request named for this filmer.
+/// It needs to know who the filmer is, so it stays disabled until whatever
+/// opens this screen passes one -- nothing does yet, since the screen still
+/// shows the artboard's sample profile.
 struct ProProfileScreen: View {
+    var filmer: FilmBookingScreen.RequestedFilmer?
+
     @Environment(\.dismiss) private var dismiss
+    @State private var showsFilmBooking = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,6 +31,11 @@ struct ProProfileScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SCColor.background)
+        .sheet(isPresented: $showsFilmBooking) {
+            if let filmer {
+                FilmBookingScreen(requestedFilmer: filmer)
+            }
+        }
     }
 
     private var header: some View {
@@ -134,9 +146,10 @@ struct ProProfileScreen: View {
                         .fixedSize()
                 }
 
-                Button("Request a session") {}
+                Button("Request a session") { showsFilmBooking = true }
                     .buttonStyle(.scPrimary(fontSize: 14))
                     .frame(height: 46)
+                    .disabled(filmer == nil)
             }
             .padding(16)
             .scCard()
