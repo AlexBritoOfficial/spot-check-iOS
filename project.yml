@@ -28,6 +28,19 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift.git
     exactVersion: 2.49.0
+  # Pinned to 25.16.0, the newest release that compiles with Xcode 16.2
+  # (Swift 6.0, iOS 18.2 SDK). Swift-tools-version alone is not the limit --
+  # everything up to 26.15.1 declares 5.7 -- but newer tags break the build:
+  #   25.17.0+  StripeIdentity uses trailing commas in argument lists (Swift 6.1)
+  #   26.1.0+   StripeUICore calls the iOS 26 SDK's `allowsNumberPadPopover`
+  #             behind #available only, with no #if compiler guard
+  # Checked by parsing every module the app uses with this toolchain's swiftc
+  # and by building. Only StripeIdentity is used for now; StripePaymentSheet
+  # joins it when Checkout saves a card. Bump alongside Supabase once Xcode is
+  # updated.
+  Stripe:
+    url: https://github.com/stripe/stripe-ios.git
+    exactVersion: 25.16.0
 
 targets:
   SpotCheck:
@@ -62,6 +75,8 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+      - package: Stripe
+        product: StripeIdentity
 
   SpotCheckTests:
     type: bundle.unit-test

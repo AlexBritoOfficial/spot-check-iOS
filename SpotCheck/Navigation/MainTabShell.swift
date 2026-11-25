@@ -155,6 +155,7 @@ struct MainTabShell: View {
             FilmBookingScreen(pinCoordinate: locationService.coordinate ?? LocationService.defaultCoordinate)
         case .myRequests:
             MyRequestsScreen(pinCoordinate: locationService.coordinate ?? LocationService.defaultCoordinate)
+        case .verifyID: IDVerifyScreen()
         }
     }
 }
