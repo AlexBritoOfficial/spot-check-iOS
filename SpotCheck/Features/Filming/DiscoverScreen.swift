@@ -1,42 +1,30 @@
 import SwiftUI
 
 /// The canvas's `Discover` artboard -- a filmer's inbox of filming
-/// requests, grouped by day. Filtering and the accept/pass state are
-/// local view state over the artboard's sample requests, exactly as the
-/// artboard itself behaves; nothing is persisted.
+/// requests, grouped by day, backed by `filming_requests`.
 ///
-/// The artboard also draws a filmer-mode bottom nav (DISCOVER replacing
-/// FEED). That role-dependent tab bar is a product decision still to be
-/// planned, so this screen is presented from the menu instead and draws
-/// no nav bar.
+/// What a filmer sees is decided by the database: open requests that haven't
+/// started, sent to anyone or named for them, minus the ones they passed on --
+/// and nothing at all while their profile is paused. Accept and Pass call the
+/// backend; accepting a full edit asks for a quote first.
+///
+/// Below the inbox, "Your sessions" lists what this filmer has accepted, with
+/// a Cancel that warns when cancelling now would be a strike.
 struct DiscoverScreen: View {
-    private enum Status {
-        case open, accepted, passed
-    }
+    @Environment(AuthManager.self) private var authManager
+    @Environment(FilmingRequestsStore.self) private var store
 
-    @Environment(\.dismiss) private var dismiss
+    @State private var filter: DiscoverFilter = .all
+    @State private var acting: UUID?
+    @State private var actionError: String?
+    @State private var quoting: FilmingRequest?
+    @State private var quoteDollars = ""
+    @State private var cancelling: FilmingRequest?
 
-    @State private var selectedFilter = 0
-    @State private var statuses: [String: Status] = [:]
+    private var userID: UUID? { authManager.currentProfile?.id }
 
-    private let filters = ["All", "Street", "Park", "Full edit"]
-
-    private var visibleRequests: [SampleFilmingRequest] {
-        DiscoverScreen.sampleRequests.filter { request in
-            let kindMatches = selectedFilter == 0
-                || request.kind == filters[selectedFilter].lowercased()
-            return kindMatches && statuses[request.id] != .passed
-        }
-    }
-
-    private var groupedByDay: [(day: String, items: [SampleFilmingRequest])] {
-        visibleRequests.reduce(into: [(day: String, items: [SampleFilmingRequest])]()) { groups, request in
-            if let index = groups.firstIndex(where: { $0.day == request.day }) {
-                groups[index].items.append(request)
-            } else {
-                groups.append((day: request.day, items: [request]))
-            }
-        }
+    private var sections: [DiscoverSection] {
+        DiscoverFeed.sections(store.discover, filter: filter, now: .now)
     }
 
     var body: some View {
@@ -48,20 +36,36 @@ struct DiscoverScreen: View {
                     reliabilityRow
                     earningsRow
 
-                    ForEach(groupedByDay, id: \.day) { group in
-                        SCSectionHeader(group.day) {
-                            Text(group.items.count == 1 ? "1 request" : "\(group.items.count) requests")
+                    if let message = actionError ?? store.lastError {
+                        Text(message)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(SCColor.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 4)
+                    }
+
+                    if sections.isEmpty && !store.isLoading {
+                        emptyInbox
+                    }
+
+                    ForEach(sections) { section in
+                        SCSectionHeader(section.title) {
+                            Text(section.requests.count == 1 ? "1 request" : "\(section.requests.count) requests")
                                 .scSectionLabel()
                         }
                         .padding(.horizontal, 4)
                         .padding(.top, 8)
 
-                        ForEach(group.items) { request in
+                        ForEach(section.requests) { request in
                             requestCard(request)
                         }
                     }
 
-                    Text("Requests come from skaters who asked for any filmer, or chose you from your profile. Accepting charges them your rate + 15%, held until you both confirm. Cancelling late adds a strike.")
+                    if !store.sessions.isEmpty {
+                        sessionsSection
+                    }
+
+                    Text("Requests come from skaters who asked for any filmer, or chose you from your profile. Accepting charges them your rate + 15%, held until you both confirm. Cancelling less than 5 hours before a session adds a strike.")
                         .font(.system(size: 12))
                         .lineSpacing(3)
                         .foregroundStyle(SCColor.textSecondary)
@@ -73,10 +77,88 @@ struct DiscoverScreen: View {
                 .padding(.top, 14)
                 .padding(.bottom, 24)
             }
+            .refreshable { await load() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SCColor.background)
+        .task { await load() }
+        .alert("Quote this full edit", isPresented: isQuoting) {
+            TextField("Price in dollars", text: $quoteDollars)
+                .keyboardType(.numberPad)
+            Button("Accept") {
+                if let request = quoting {
+                    Task { await accept(request, quoteCents: quoteCents) }
+                }
+            }
+            .disabled(quoteCents == nil)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A full edit is priced by you. The skater pays your quote + 15%.")
+        }
+        .confirmationDialog(
+            "Cancel this session?",
+            isPresented: isCancelling,
+            titleVisibility: .visible,
+            presenting: cancelling
+        ) { request in
+            Button("Cancel session", role: .destructive) {
+                Task { await cancel(request) }
+            }
+            Button("Keep it", role: .cancel) {}
+        } message: { request in
+            Text(LateCancellation.warning(for: .filmer, request: request, at: .now)
+                 ?? "It's more than 5 hours away, so cancelling now is not a strike. The skater is refunded.")
+        }
     }
+
+    private var isQuoting: Binding<Bool> {
+        Binding(get: { quoting != nil }, set: { if !$0 { quoting = nil } })
+    }
+
+    private var isCancelling: Binding<Bool> {
+        Binding(get: { cancelling != nil }, set: { if !$0 { cancelling = nil } })
+    }
+
+    private var quoteCents: Int? {
+        guard let dollars = Int(quoteDollars.trimmingCharacters(in: .whitespaces)), dollars > 0 else { return nil }
+        return dollars * 100
+    }
+
+    // MARK: - Actions
+
+    private func load() async {
+        guard let userID else { return }
+        await store.loadFilmerInbox(userID: userID)
+    }
+
+    private func accept(_ request: FilmingRequest, quoteCents: Int?) async {
+        guard let userID else { return }
+        await perform(on: request) {
+            try await store.accept(request, quoteCents: quoteCents, userID: userID)
+        }
+    }
+
+    private func pass(_ request: FilmingRequest) async {
+        await perform(on: request) { try await store.pass(request) }
+    }
+
+    private func cancel(_ request: FilmingRequest) async {
+        guard let userID else { return }
+        await perform(on: request) { try await store.cancel(request, userID: userID) }
+    }
+
+    private func perform(on request: FilmingRequest, _ action: () async throws -> Void) async {
+        acting = request.id
+        defer { acting = nil }
+        do {
+            try await action()
+            actionError = nil
+        } catch {
+            actionError = "Couldn't update that request: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Header and summary rows
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -85,7 +167,7 @@ struct DiscoverScreen: View {
                     Text("Discover")
                         .font(SCFont.heading(26))
                         .foregroundStyle(SCColor.textPrimary)
-                    Text("Filming requests near you · this week")
+                    Text("Filming requests that haven't started yet")
                         .font(.system(size: 13))
                         .foregroundStyle(SCColor.textSecondary)
                 }
@@ -94,8 +176,14 @@ struct DiscoverScreen: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                SCPillTabs(titles: filters, selection: $selectedFilter)
-                    .padding(.horizontal, SCMetric.screenPadding)
+                SCPillTabs(
+                    titles: DiscoverFilter.allCases.map(\.title),
+                    selection: Binding(
+                        get: { DiscoverFilter.allCases.firstIndex(of: filter) ?? 0 },
+                        set: { filter = DiscoverFilter.allCases[$0] }
+                    )
+                )
+                .padding(.horizontal, SCMetric.screenPadding)
             }
             .padding(.horizontal, -SCMetric.screenPadding)
             .accessibilityElement(children: .contain)
@@ -124,14 +212,15 @@ struct DiscoverScreen: View {
     }
 
     private var reliabilityRow: some View {
-        HStack {
+        let strikes = store.standing?.strikeCount ?? 0
+        return HStack {
             Text("Your reliability")
                 .foregroundStyle(SCColor.textBody)
             Spacer()
             HStack(spacing: 6) {
-                Text("0 strikes")
+                Text(strikes == 1 ? "1 strike" : "\(strikes) strikes")
                     .fontWeight(.bold)
-                    .foregroundStyle(SCColor.success)
+                    .foregroundStyle(strikes == 0 ? SCColor.success : SCColor.danger)
                 Text("· 3 pauses your profile")
                     .foregroundStyle(SCColor.textSecondary)
             }
@@ -168,13 +257,109 @@ struct DiscoverScreen: View {
         .buttonStyle(.plain)
     }
 
-    private func requestCard(_ request: SampleFilmingRequest) -> some View {
-        let isAccepted = statuses[request.id] == .accepted
+    private var emptyInbox: some View {
+        Text(store.standing == nil
+             ? "Loading requests…"
+             : "No open requests right now. Pull down to check again.")
+            .font(.system(size: 13.5))
+            .foregroundStyle(SCColor.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 24)
+    }
+
+    // MARK: - Cards
+
+    /// What this filmer would earn: their own rate for this session, or a
+    /// prompt to quote a full edit.
+    private func earnLabel(for request: FilmingRequest) -> String {
+        if request.package == .fullEdit { return "Quote on accept" }
+        guard let rates = store.standing?.rates,
+              let rate = FilmingPricing.rateCents(
+                for: request.package, startsAt: request.startsAt, endsAt: request.endsAt, rates: rates)
+        else { return "Set your rate" }
+        return "You earn \(Money.dollars(rate))"
+    }
+
+    private func timeRange(_ request: FilmingRequest) -> String {
+        let from = request.startsAt.formatted(date: .omitted, time: .shortened)
+        let to = request.endsAt.formatted(date: .omitted, time: .shortened)
+        return "\(from)–\(to)"
+    }
+
+    private func requestCard(_ request: FilmingRequest) -> some View {
+        let isBusy = acting == request.id
 
         return VStack(alignment: .leading, spacing: 12) {
+            requestSummary(request, trailing: earnLabel(for: request))
+
+            HStack(spacing: 8) {
+                Button("Accept") {
+                    if request.package == .fullEdit {
+                        quoteDollars = ""
+                        quoting = request
+                    } else {
+                        Task { await accept(request, quoteCents: nil) }
+                    }
+                }
+                .buttonStyle(.scPrimary(fontSize: 13.5))
+                .frame(height: 44)
+
+                Button("Pass") {
+                    Task { await pass(request) }
+                }
+                .buttonStyle(.scSecondary(fontSize: 13.5))
+                .frame(width: 110, height: 44)
+            }
+            .disabled(isBusy)
+        }
+        .padding(14)
+        .scCard(borderColor: SCColor.border, borderWidth: 1.5)
+    }
+
+    private var sessionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SCSectionHeader("Your sessions") {
+                Text(store.sessions.count == 1 ? "1 accepted" : "\(store.sessions.count) accepted")
+                    .scSectionLabel()
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 8)
+
+            ForEach(store.sessions) { session in
+                VStack(alignment: .leading, spacing: 12) {
+                    requestSummary(
+                        session,
+                        trailing: session.rateCents.map { "You earn \(Money.dollars($0))" } ?? ""
+                    )
+
+                    HStack(spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(session.startsAt.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                                .font(.system(size: 13, weight: .bold))
+                        }
+                        .foregroundStyle(SCColor.success)
+
+                        Spacer(minLength: 8)
+
+                        Button("Cancel") { cancelling = session }
+                            .buttonStyle(.scSecondary(fontSize: 12.5))
+                            .frame(width: 96, height: 36)
+                            .disabled(acting == session.id)
+                    }
+                }
+                .padding(14)
+                .scCard(borderColor: SCColor.success, borderWidth: 1.5)
+            }
+        }
+    }
+
+    private func requestSummary(_ request: FilmingRequest, trailing: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Avatar(
-                    initial: request.skater,
+                    initial: request.skater?.username ?? "?",
                     size: 40,
                     backgroundColor: SCColor.border,
                     foregroundColor: SCColor.textPrimary
@@ -182,21 +367,21 @@ struct DiscoverScreen: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .top, spacing: 8) {
-                        Text(request.package)
+                        Text(request.package.title)
                             .font(SCFont.headingFixed(14.5))
                             .foregroundStyle(SCColor.textPrimary)
                         Spacer(minLength: 4)
-                        Text("You earn $[RATE]")
+                        Text(trailing)
                             .font(SCFont.headingFixed(13))
                             .foregroundStyle(SCColor.accent)
                             .fixedSize()
                     }
-                    Text("\(request.skater) · \(request.time)")
+                    Text("\(request.skater?.username ?? "A skater") · \(timeRange(request))")
                         .font(.system(size: 13))
                         .foregroundStyle(SCColor.textBody)
                     HStack(spacing: 5) {
                         SCPinGlyph(height: 13)
-                        Text(request.spot)
+                        Text(request.locationTitle)
                             .font(.system(size: 13))
                             .foregroundStyle(SCColor.textSecondary)
                     }
@@ -204,7 +389,7 @@ struct DiscoverScreen: View {
             }
 
             FlowChips(spacing: 6) {
-                ForEach(request.tags, id: \.self) { tag in
+                ForEach(tags(for: request), id: \.self) { tag in
                     Text(tag.uppercased())
                         .font(SCFont.headingFixed(9.5))
                         .foregroundStyle(SCColor.textSecondary)
@@ -213,113 +398,12 @@ struct DiscoverScreen: View {
                         .scCard(cornerRadius: SCRadius.badge, fill: SCColor.background)
                 }
             }
-
-            if isAccepted {
-                HStack(spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
-                        Text("Accepted · added to your sessions")
-                            .font(.system(size: 13, weight: .bold))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .foregroundStyle(SCColor.success)
-
-                    Spacer(minLength: 8)
-
-                    Button {} label: {
-                        Text("Message")
-                            .font(SCFont.headingFixed(11.5))
-                            .foregroundStyle(SCColor.textPrimary)
-                            .padding(.horizontal, 12)
-                            .frame(height: 36)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(SCColor.border, lineWidth: 1.5)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            } else {
-                HStack(spacing: 8) {
-                    Button("Accept") {
-                        statuses[request.id] = .accepted
-                    }
-                    .buttonStyle(.scPrimary(fontSize: 13.5))
-                    .frame(height: 44)
-
-                    Button("Pass") {
-                        statuses[request.id] = .passed
-                    }
-                    .buttonStyle(.scSecondary(fontSize: 13.5))
-                    .frame(width: 110, height: 44)
-                }
-            }
         }
-        .padding(14)
-        .scCard(
-            borderColor: isAccepted ? SCColor.success : SCColor.border,
-            borderWidth: 1.5
-        )
     }
-}
 
-private struct SampleFilmingRequest: Identifiable {
-    let id: String
-    let day: String
-    let kind: String
-    let package: String
-    let skater: String
-    let time: String
-    let spot: String
-    let tags: [String]
-}
-
-private extension DiscoverScreen {
-    static let sampleRequests: [SampleFilmingRequest] = [
-        SampleFilmingRequest(
-            id: "r1",
-            day: "Today · Fri 20",
-            kind: "street",
-            package: "Hourly Street Session",
-            skater: "Rider Silva",
-            time: "5–7 PM",
-            spot: "Copley Library · 0.8 mi",
-            tags: ["Golden hour", "Security: sometimes"]
-        ),
-        SampleFilmingRequest(
-            id: "r2",
-            day: "Sat 21",
-            kind: "park",
-            package: "Park Drop-In",
-            skater: "Rider Chen",
-            time: "10–11 AM",
-            spot: "Lynch Family Skatepark · 2.1 mi",
-            tags: ["Daylight", "Transition"]
-        ),
-        SampleFilmingRequest(
-            id: "r3",
-            day: "Sun 22",
-            kind: "full edit",
-            package: "Full Edit Package",
-            skater: "Rider Nguyen",
-            time: "Sun + Tue",
-            spot: "Eggs + 2 more spots",
-            tags: ["Multi-day", "Post-production"]
-        ),
-        SampleFilmingRequest(
-            id: "r4",
-            day: "Tue 24",
-            kind: "street",
-            package: "Hourly Street Session",
-            skater: "Rider Silva",
-            time: "8–10 PM",
-            spot: "Eggs · 0.4 mi",
-            tags: ["Night · bring lights", "Security: low"]
-        )
-    ]
-}
-
-#Preview {
-    DiscoverScreen()
+    private func tags(for request: FilmingRequest) -> [String] {
+        var tags = [request.lighting.title, "Security: \(request.securityRisk.title.lowercased())"]
+        if request.requestedFilmerID != nil { tags.insert("Sent to you", at: 0) }
+        return tags
+    }
 }
