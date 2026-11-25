@@ -28,6 +28,13 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift.git
     exactVersion: 2.49.0
+  # Pinned to 26.15.1 for the same reason as Supabase: it is the last tag on
+  # swift-tools-version 5.7, and 26.16.0 moved to 6.1, which Xcode 16.2 can't
+  # parse. Only StripeIdentity is used for now; StripePaymentSheet joins it
+  # when Checkout saves a card. Bump alongside Supabase once Xcode is updated.
+  Stripe:
+    url: https://github.com/stripe/stripe-ios.git
+    exactVersion: 26.15.1
 
 targets:
   SpotCheck:
@@ -62,6 +69,8 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+      - package: Stripe
+        product: StripeIdentity
 
   SpotCheckTests:
     type: bundle.unit-test
