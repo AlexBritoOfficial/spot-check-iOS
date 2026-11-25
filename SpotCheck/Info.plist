@@ -47,7 +47,7 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Spot Check needs access to your photo library so you can add a photo when submitting a spot.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Spot Check needs camera access so you can take a photo when submitting a spot.</string>
+	<string>Spot Check uses the camera to take a photo when you submit a spot, and to scan your ID and take a selfie when you verify your age.</string>
 
 	<key>UILaunchScreen</key>
 	<dict/>

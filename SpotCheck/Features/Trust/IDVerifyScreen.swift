@@ -1,10 +1,20 @@
 import SwiftUI
 
 /// The canvas's `IDVerify` artboard -- the 18+ ID and age check that
-/// gates booking and payouts. Starting verification is intentionally
-/// unwired pending per-feature planning.
+/// gates booking and payouts. "Start verification" runs Stripe Identity
+/// through `IdentityVerificationFlow`; the result arrives by webhook, so the
+/// footer can also show "Check status" while Stripe decides.
 struct IDVerifyScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AuthManager.self) private var authManager
+
+    @State private var flow: IdentityVerificationFlow?
+
+    private var userID: UUID? {
+        if case .signedIn(let id) = authManager.state { id } else { nil }
+    }
+
+    private var state: IdentityVerificationFlow.State { flow?.state ?? .loading }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,6 +45,10 @@ struct IDVerifyScreen: View {
                         )
                     }
 
+                    if let message = state.statusMessage {
+                        statusNote(message)
+                    }
+
                     SCNoteRow(
                         text: "Checks run through our verification partner. Spot Check only keeps your verified status and age.",
                         systemImage: "lock.fill",
@@ -60,15 +74,63 @@ struct IDVerifyScreen: View {
 
             SCFooterBar {
                 VStack(spacing: 10) {
-                    Button("Start verification") {}
-                        .buttonStyle(.scPrimary(fontSize: 14.5))
-                    Button("Skip for now") { dismiss() }
-                        .buttonStyle(.scSecondary(fontSize: 14.5))
+                    primaryButton
+                    if state.primaryAction != .done {
+                        Button("Skip for now") { dismiss() }
+                            .buttonStyle(.scSecondary(fontSize: 14.5))
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SCColor.background)
+        .task {
+            guard flow == nil, let userID else { return }
+            let flow = IdentityVerificationFlow(onVerified: { [authManager] in
+                await authManager.refreshProfile()
+            })
+            self.flow = flow
+            await flow.load(userID: userID)
+        }
+    }
+
+    @ViewBuilder
+    private var primaryButton: some View {
+        switch state.primaryAction {
+        case .start(let title):
+            Button(title) { run { flow, userID in
+                await flow.start(userID: userID, present: StripeIdentitySheet.present(clientSecret:))
+            } }
+            .buttonStyle(.scPrimary(fontSize: 14.5))
+        case .refresh(let title):
+            Button(title) { run { flow, userID in await flow.refresh(userID: userID) } }
+                .buttonStyle(.scPrimary(fontSize: 14.5))
+        case .busy(let title):
+            Button(title) {}
+                .buttonStyle(.scPrimary(fontSize: 14.5))
+                .disabled(true)
+        case .done:
+            Button("Done") { dismiss() }
+                .buttonStyle(.scPrimary(fontSize: 14.5))
+        }
+    }
+
+    private func run(_ action: @escaping @MainActor (IdentityVerificationFlow, UUID) async -> Void) {
+        guard let flow, let userID else { return }
+        Task { await action(flow, userID) }
+    }
+
+    private func statusNote(_ message: String) -> some View {
+        let isGood = state == .verified
+        let isProblem: Bool = switch state {
+        case .needsRetry, .failed, .notAdult: true
+        default: false
+        }
+        return SCNoteRow(
+            text: message,
+            systemImage: isGood ? "checkmark.seal.fill" : isProblem ? "exclamationmark.triangle.fill" : "clock",
+            iconColor: isGood ? SCColor.success : isProblem ? SCColor.danger : SCColor.accent
+        )
     }
 
     private func stepCard(systemImage: String, title: String, detail: String) -> some View {
@@ -99,4 +161,5 @@ struct IDVerifyScreen: View {
 
 #Preview {
     IDVerifyScreen()
+        .environment(AuthManager())
 }
