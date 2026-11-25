@@ -1,22 +1,20 @@
 import SwiftUI
 
-/// The canvas's `FilmerQualify` artboard -- step 1 of filmer
-/// onboarding. Chip selections are local view state; the upload rows
-/// are presentation only, with no picker attached, pending per-feature
-/// planning.
+/// The canvas's `FilmerQualify` artboard -- step 2 of filmer onboarding,
+/// after the ID check. "Submit for review" sends the application through
+/// FilmerOnboardingFlow.
+///
+/// The two reel rows are sample clips for now (Alex: "use dummy data"):
+/// there is no video picker yet. The consent row is not on the canvas, which
+/// draws "Consent signed" on Verification but never where it's given.
 struct FilmerQualifyScreen: View {
+    let flow: FilmerOnboardingFlow
+    var userID: UUID?
+    var onSubmitted: () -> Void = {}
+
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedGear: Set<String> = [
-        "VX1000 / tapeless",
-        "DSLR/mirrorless + fisheye",
-        "External shotgun mic",
-        "Filmer cruiser board"
-    ]
-    @State private var selectedStyles: Set<String> = [
-        "Street follow-lines",
-        "Night / external lighting"
-    ]
+    @State private var draft = FilmerApplicationDraft()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +26,7 @@ struct FilmerQualifyScreen: View {
                     gearSection
                     reelsSection
                     styleSection
+                    consentSection
                 }
                 .padding(.horizontal, SCMetric.screenPadding)
                 .padding(.top, 8)
@@ -35,8 +34,18 @@ struct FilmerQualifyScreen: View {
             }
 
             SCFooterBar {
-                Button("Submit for review") {}
-                    .buttonStyle(.scPrimary)
+                VStack(spacing: 10) {
+                    if let message = flow.errorMessage {
+                        Text(message)
+                            .font(.system(size: 13))
+                            .foregroundStyle(SCColor.danger)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+                    Button(flow.isSubmitting ? "Submitting…" : "Submit for review") { submit() }
+                        .buttonStyle(.scPrimary)
+                        .disabled(!draft.canSubmit || flow.isSubmitting || userID == nil)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -58,7 +67,7 @@ struct FilmerQualifyScreen: View {
 
             Spacer()
 
-            Text("Step 1 of 4")
+            Text("Step 2 of 4")
                 .font(.system(size: 13))
                 .foregroundStyle(SCColor.textSecondary)
                 .padding(.trailing, 14)
@@ -91,8 +100,8 @@ struct FilmerQualifyScreen: View {
             }
 
             FlowChips(spacing: 8) {
-                ForEach(FilmerQualifyScreen.gearOptions, id: \.self) { option in
-                    qualifyChip(option, in: $selectedGear)
+                ForEach(FilmerApplicationDraft.gearOptions, id: \.self) { option in
+                    qualifyChip(option, in: $draft.gear)
                 }
             }
         }
@@ -102,8 +111,8 @@ struct FilmerQualifyScreen: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("FILMING STYLE").scSectionLabel()
             FlowChips(spacing: 8) {
-                ForEach(FilmerQualifyScreen.styleOptions, id: \.self) { option in
-                    qualifyChip(option, in: $selectedStyles)
+                ForEach(FilmerApplicationDraft.styleOptions, id: \.self) { option in
+                    qualifyChip(option, in: $draft.styles)
                 }
             }
         }
@@ -113,70 +122,54 @@ struct FilmerQualifyScreen: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("DEMO REELS").scSectionLabel()
 
-            Button {} label: {
-                HStack(spacing: 14) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(SCColor.background)
-                        .frame(width: 44, height: 44)
-                        .background(SCColor.success)
-                        .clipShape(RoundedRectangle(cornerRadius: SCRadius.control))
+            sampleClipRow(title: "Edited highlight reel")
+            sampleClipRow(title: "Raw follow-line clip")
+        }
+    }
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Edited highlight reel")
-                            .font(SCFont.headingFixed(14))
-                            .foregroundStyle(SCColor.textPrimary)
-                        Text("okafor_reel_2026.mp4 · 2:14")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(SCColor.textSecondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(14)
-                .scCard(cornerRadius: SCRadius.cardSmall)
+    /// A clip that is already "attached": the sample file the application
+    /// sends until there's a video picker.
+    private func sampleClipRow(title: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(SCColor.background)
+                .frame(width: 44, height: 44)
+                .background(SCColor.success)
+                .clipShape(RoundedRectangle(cornerRadius: SCRadius.control))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(SCFont.headingFixed(14))
+                    .foregroundStyle(SCColor.textPrimary)
+                Text("Sample clip (testing)")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(SCColor.textSecondary)
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(14)
+        .scCard(cornerRadius: SCRadius.cardSmall)
+        .accessibilityElement(children: .combine)
+    }
 
-            Button {} label: {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 14) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 19, weight: .semibold))
-                            .foregroundStyle(SCColor.accent)
-                            .frame(width: 44, height: 44)
-                            .background(SCColor.border)
-                            .clipShape(RoundedRectangle(cornerRadius: SCRadius.control))
+    private var consentSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("BACKGROUND CHECK").scSectionLabel()
+            SCToggleRow(
+                title: "I authorize a background check",
+                caption: "Required to film. Your services stay hidden until it clears.",
+                isOn: $draft.consentsToBackgroundCheck
+            )
+            .padding(16)
+            .scCard(cornerRadius: SCRadius.cardSmall)
+        }
+    }
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("+ Raw follow-line clip")
-                                .font(SCFont.headingFixed(14))
-                                .foregroundStyle(SCColor.textPrimary)
-                            Text("Required · 30–60 sec · unedited")
-                                .font(.system(size: 12.5, weight: .semibold))
-                                .foregroundStyle(SCColor.accent)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    Text("No cuts, stabilization or speed ramps. It shows you can hold a steady frame at speed.")
-                        .font(.system(size: 12.5))
-                        .lineSpacing(3)
-                        .foregroundStyle(SCColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(SCColor.accent.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: SCRadius.cardSmall)
-                        .strokeBorder(
-                            SCColor.accent,
-                            style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
-                        )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: SCRadius.cardSmall))
-            }
-            .buttonStyle(.plain)
+    private func submit() {
+        guard let userID else { return }
+        Task {
+            if await flow.submit(draft, userID: userID) { onSubmitted() }
         }
     }
 
@@ -205,23 +198,6 @@ struct FilmerQualifyScreen: View {
     }
 }
 
-private extension FilmerQualifyScreen {
-    static let gearOptions = [
-        "VX1000 / tapeless",
-        "DSLR/mirrorless + fisheye",
-        "Long lens (telephoto)",
-        "External shotgun mic",
-        "Filmer cruiser board"
-    ]
-
-    static let styleOptions = [
-        "Street follow-lines",
-        "Park / transition",
-        "Night / external lighting",
-        "Quick social clips"
-    ]
-}
-
 #Preview {
-    FilmerQualifyScreen()
+    FilmerQualifyScreen(flow: FilmerOnboardingFlow())
 }
