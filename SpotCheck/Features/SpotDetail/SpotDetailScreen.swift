@@ -22,6 +22,7 @@ struct SpotDetailScreen: View {
     @State private var showDeleteConfirm = false
     @State private var isDeleting = false
     @State private var showBustLog = false
+    @State private var showsFilmBooking = false
 
     private var spot: Spot? { spotsStore.spot(id: spotID) }
     private var isOwner: Bool { spot?.isOwned(by: authManager.currentProfile?.id) ?? false }
@@ -54,6 +55,11 @@ struct SpotDetailScreen: View {
         }
         .sheet(isPresented: $showBustLog) {
             BustLogScreen()
+        }
+        .sheet(isPresented: $showsFilmBooking) {
+            if let spot {
+                FilmBookingScreen(spot: spot)
+            }
         }
     }
 
@@ -190,6 +196,25 @@ struct SpotDetailScreen: View {
                     .font(SCFont.headingFixed(14))
                     .foregroundStyle(SCColor.textPrimary)
             }
+
+            // Not on the canvas's SpotDetail artboard: the way into booking a
+            // filmer for this spot, with the spot already filled in.
+            Button {
+                showsFilmBooking = true
+            } label: {
+                SCIconDetailRow(
+                    systemImage: "video.badge.plus",
+                    title: "Request a filmer here",
+                    subtitle: "Background-checked filmers near \(spot.name)"
+                ) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(SCColor.accent)
+                }
+                .padding(12)
+                .scCard(cornerRadius: SCRadius.cardSmall)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, SCMetric.screenPadding)
         .padding(.top, 24)

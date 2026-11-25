@@ -11,6 +11,7 @@ struct MainTabShell: View {
 
     @State private var spotsStore = SpotsStore()
     @State private var bookmarksStore = BookmarksStore()
+    @State private var filmingRequestsStore = FilmingRequestsStore()
     @State private var presenceService = PresenceService()
     @State private var menuCoordinator = MenuCoordinator()
     @State private var modeCoordinator = ModeCoordinator()
@@ -69,6 +70,7 @@ struct MainTabShell: View {
         .background(SCColor.background)
         .environment(spotsStore)
         .environment(bookmarksStore)
+        .environment(filmingRequestsStore)
         .environment(presenceService)
         .environment(menuCoordinator)
         .environment(modeCoordinator)
@@ -107,7 +109,12 @@ struct MainTabShell: View {
             )
         }
         .sheet(item: $menuCoordinator.destination) { destination in
+            // Passed explicitly: this modifier sits outside the
+            // `.environment(...)` calls above, so its content can't rely on
+            // inheriting them.
             drawerDestination(destination)
+                .environment(spotsStore)
+                .environment(filmingRequestsStore)
         }
     }
 
@@ -144,6 +151,10 @@ struct MainTabShell: View {
         case .filmerTools: EarningsScreen()
         case .filmingRequests: DiscoverScreen()
         case .scoutSkaters: IndustryScoutScreen()
+        case .requestFilmer:
+            FilmBookingScreen(pinCoordinate: locationService.coordinate ?? LocationService.defaultCoordinate)
+        case .myRequests:
+            MyRequestsScreen(pinCoordinate: locationService.coordinate ?? LocationService.defaultCoordinate)
         }
     }
 }

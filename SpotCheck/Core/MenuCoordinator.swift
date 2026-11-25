@@ -18,6 +18,10 @@ final class MenuCoordinator {
         case filmerTools
         case filmingRequests
         case scoutSkaters
+        /// Not on the canvas's menu: a skater's way into booking a filmer,
+        /// and to the requests they've made.
+        case requestFilmer
+        case myRequests
 
         var id: Self { self }
     }
