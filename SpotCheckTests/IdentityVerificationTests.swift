@@ -65,6 +65,36 @@ final class IdentityVerificationTests: XCTestCase {
         )
     }
 
+    func testAVerifiedIDWithNoReadableBirthDateIsUnknownNotUnder18() {
+        // The webhook saves verified_is_adult = null when Stripe returns no
+        // date of birth. That is "we don't know", and must never be shown as
+        // "your ID shows you're under 18".
+        typealias State = IdentityVerificationFlow.State
+        XCTAssertEqual(State(row: row(.verified, adult: nil)), .ageUnknown)
+    }
+
+    func testAnUnknownAgeExplainsItselfAndOffersAnotherTry() {
+        typealias State = IdentityVerificationFlow.State
+        XCTAssertEqual(State.ageUnknown.primaryAction, .start(title: "Try again"))
+        XCTAssertEqual(
+            State.ageUnknown.statusMessage,
+            "Your ID was verified, but we couldn't read the date of birth on it. Try again with an ID where it's clear."
+        )
+        XCTAssertTrue(State.ageUnknown.offersSkip(in: .standalone))
+    }
+
+    func testWhichStatesAreShownAsAProblem() {
+        typealias State = IdentityVerificationFlow.State
+        let problems: [State] = [.needsRetry(reason: "x"), .failed(message: "x"), .notAdult, .ageUnknown]
+        for state in problems {
+            XCTAssertTrue(state.isProblem, "\(state)")
+        }
+        let fine: [State] = [.loading, .notStarted, .starting, .inProgress, .processing, .verified]
+        for state in fine {
+            XCTAssertFalse(state.isProblem, "\(state)")
+        }
+    }
+
     func testAnUnknownStripeErrorStillGivesAReason() {
         XCTAssertEqual(
             IdentityVerificationFlow.State(row: row(.requiresInput, error: "something_new")),
@@ -140,6 +170,22 @@ final class IdentityVerificationTests: XCTestCase {
         await flow.start(userID: userID) { _ in .canceled }
 
         XCTAssertEqual(flow.state, before)
+    }
+
+    func testFinishingTheSheetAfterAWebhookWithNoBirthDateSaysSo() async {
+        let api = FakeIdentityVerificationAPI(row: nil)
+        api.start = .verify(clientSecret: "vs_1_secret_x")
+        var reported = 0
+        let flow = IdentityVerificationFlow(api: api, onVerified: { reported += 1 })
+
+        await flow.start(userID: userID) { _ in
+            api.row = self.row(.verified, adult: nil)
+            return .completed
+        }
+
+        // A final answer: not "Stripe is checking" forever, and not verified.
+        XCTAssertEqual(flow.state, .ageUnknown)
+        XCTAssertEqual(reported, 0)
     }
 
     func testTheSheetFailingShowsWhy() async {

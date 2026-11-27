@@ -37,9 +37,15 @@ enum FilmerOnboarding {
     /// Only a verified adult moves on. "Stripe is still checking" waits on
     /// the ID screen (Alex: wait for the ID to be verified), which is also
     /// what `submit_filmer_application` enforces server-side.
+    /// An unknown age (no readable date of birth) goes back to the ID screen,
+    /// which offers another try; only a checked under-18 is `.notAdult`.
     static func stepAfterPitch(identity: IdentityVerification?) -> StepAfterPitch {
         guard let identity, identity.status == .verified else { return .verifyID }
-        return identity.verifiedIsAdult == true ? .portfolio : .notAdult
+        switch identity.verifiedIsAdult {
+        case true?: return .portfolio
+        case false?: return .notAdult
+        case nil: return .verifyID
+        }
     }
 }
 
