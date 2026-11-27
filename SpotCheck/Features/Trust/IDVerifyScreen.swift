@@ -142,10 +142,7 @@ struct IDVerifyScreen: View {
 
     private func statusNote(_ message: String) -> some View {
         let isGood = state == .verified
-        let isProblem: Bool = switch state {
-        case .needsRetry, .failed, .notAdult: true
-        default: false
-        }
+        let isProblem = state.isProblem
         return SCNoteRow(
             text: message,
             systemImage: isGood ? "checkmark.seal.fill" : isProblem ? "exclamationmark.triangle.fill" : "clock",

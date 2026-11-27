@@ -65,6 +65,36 @@ final class IdentityVerificationTests: XCTestCase {
         )
     }
 
+    func testAVerifiedIDWithNoReadableBirthDateIsUnknownNotUnder18() {
+        // The webhook saves verified_is_adult = null when Stripe returns no
+        // date of birth. That is "we don't know", and must never be shown as
+        // "your ID shows you're under 18".
+        typealias State = IdentityVerificationFlow.State
+        XCTAssertEqual(State(row: row(.verified, adult: nil)), .ageUnknown)
+    }
+
+    func testAnUnknownAgeExplainsItselfAndOffersAnotherTry() {
+        typealias State = IdentityVerificationFlow.State
+        XCTAssertEqual(State.ageUnknown.primaryAction, .start(title: "Try again"))
+        XCTAssertEqual(
+            State.ageUnknown.statusMessage,
+            "Your ID was verified, but we couldn't read the date of birth on it. Try again with an ID where it's clear."
+        )
+        XCTAssertTrue(State.ageUnknown.offersSkip(in: .standalone))
+    }
+
+    func testWhichStatesAreShownAsAProblem() {
+        typealias State = IdentityVerificationFlow.State
+        let problems: [State] = [.needsRetry(reason: "x"), .failed(message: "x"), .notAdult, .ageUnknown]
+        for state in problems {
+            XCTAssertTrue(state.isProblem, "\(state)")
+        }
+        let fine: [State] = [.loading, .notStarted, .starting, .inProgress, .processing, .verified]
+        for state in fine {
+            XCTAssertFalse(state.isProblem, "\(state)")
+        }
+    }
+
     func testAnUnknownStripeErrorStillGivesAReason() {
         XCTAssertEqual(
             IdentityVerificationFlow.State(row: row(.requiresInput, error: "something_new")),
@@ -142,6 +172,22 @@ final class IdentityVerificationTests: XCTestCase {
         XCTAssertEqual(flow.state, before)
     }
 
+    func testFinishingTheSheetAfterAWebhookWithNoBirthDateSaysSo() async {
+        let api = FakeIdentityVerificationAPI(row: nil)
+        api.start = .verify(clientSecret: "vs_1_secret_x")
+        var reported = 0
+        let flow = IdentityVerificationFlow(api: api, onVerified: { reported += 1 })
+
+        await flow.start(userID: userID) { _ in
+            api.row = self.row(.verified, adult: nil)
+            return .completed
+        }
+
+        // A final answer: not "Stripe is checking" forever, and not verified.
+        XCTAssertEqual(flow.state, .ageUnknown)
+        XCTAssertEqual(reported, 0)
+    }
+
     func testTheSheetFailingShowsWhy() async {
         let api = FakeIdentityVerificationAPI(row: nil)
         api.start = .verify(clientSecret: "vs_1_secret_x")
@@ -184,6 +230,65 @@ final class IdentityVerificationTests: XCTestCase {
         await flow.refresh(userID: userID)
 
         XCTAssertEqual(flow.state, .verified)
+    }
+
+    func testTheCheckingNoteStaysUntilTheWebhookLands() async {
+        // After the sheet, the row stays requires_input until Stripe's first
+        // webhook lands. A re-check in that gap used to read it as "not
+        // started": the clock note vanished after 3 seconds and the button
+        // went back to "Start verification".
+        let api = FakeIdentityVerificationAPI(row: nil)
+        api.start = .verify(clientSecret: "vs_1_secret_x")
+        let sleeper = CountingSleeper {
+            switch $0 {
+            case 1: break // No webhook yet: still requires_input.
+            case 2: api.row = self.row(.processing)
+            default: api.row = self.row(.verified, adult: true)
+            }
+        }
+        let flow = IdentityVerificationFlow(api: api, sleep: sleeper.sleep)
+        await flow.load(userID: userID)
+        await flow.start(userID: userID) { _ in
+            api.row = self.row(.requiresInput)
+            return .completed
+        }
+        XCTAssertEqual(flow.state, .processing)
+
+        await flow.keepCheckingWhileProcessing(userID: userID, every: .seconds(3))
+
+        XCTAssertEqual(flow.state, .verified)
+        XCTAssertEqual(sleeper.calls, 3)
+    }
+
+    func testCheckStatusBeforeTheWebhookKeepsShowingChecking() async {
+        let api = FakeIdentityVerificationAPI(row: nil)
+        api.start = .verify(clientSecret: "vs_1_secret_x")
+        let flow = IdentityVerificationFlow(api: api)
+        await flow.start(userID: userID) { _ in
+            api.row = self.row(.requiresInput)
+            return .completed
+        }
+
+        await flow.refresh(userID: userID)
+
+        XCTAssertEqual(flow.state, .processing)
+    }
+
+    func testATurnedDownAttemptStillEndsTheCheckingState() async {
+        // Only a requires_input row *without* an error is "not landed yet";
+        // one with an error is Stripe's answer.
+        let api = FakeIdentityVerificationAPI(row: nil)
+        api.start = .verify(clientSecret: "vs_1_secret_x")
+        let flow = IdentityVerificationFlow(api: api)
+        await flow.start(userID: userID) { _ in
+            api.row = self.row(.requiresInput)
+            return .completed
+        }
+
+        api.row = row(.requiresInput, error: "document_expired")
+        await flow.refresh(userID: userID)
+
+        XCTAssertEqual(flow.state, .needsRetry(reason: "Your ID has expired. Try again with a current one."))
     }
 
     // MARK: - Fixtures

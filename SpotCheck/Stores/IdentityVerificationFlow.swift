@@ -24,6 +24,9 @@ final class IdentityVerificationFlow {
         case verified
         /// Verified, but the ID says under 18. Spot Check is 18+.
         case notAdult
+        /// Verified, but Stripe returned no readable date of birth, so whether
+        /// the user is 18+ is unknown. Never shown as under 18.
+        case ageUnknown
         /// Couldn't start, or the sheet itself failed.
         case failed(message: String)
     }
@@ -63,7 +66,15 @@ final class IdentityVerificationFlow {
     /// Re-reads the stored row, e.g. after "Check status".
     func refresh(userID: UUID) async {
         do {
-            await setState(State(row: try await api.verification(for: userID)))
+            let row = try await api.verification(for: userID)
+            // Once submitted, a requires_input row with no error only means
+            // Stripe's first webhook hasn't landed yet -- not "never started".
+            // Reading it as notStarted dropped the "checking" note and offered
+            // "Start verification" again, which replaced the submitted session.
+            if state == .processing, row?.status == .requiresInput, row?.lastErrorCode == nil {
+                return
+            }
+            await setState(State(row: row))
         } catch {
             state = .failed(message: error.edgeFunctionUserMessage)
         }
@@ -137,7 +148,12 @@ extension IdentityVerificationFlow.State {
         }
         switch row.status {
         case .verified:
-            self = row.verifiedIsAdult == true ? .verified : .notAdult
+            // false is "checked, and a minor"; nil is "couldn't tell".
+            switch row.verifiedIsAdult {
+            case true?: self = .verified
+            case false?: self = .notAdult
+            case nil: self = .ageUnknown
+            }
         case .processing:
             self = .processing
         case .canceled:
@@ -156,7 +172,16 @@ extension IdentityVerificationFlow.State {
     /// An answer from Stripe the user acts on, as opposed to "still waiting".
     var isFinal: Bool {
         switch self {
-        case .verified, .notAdult, .needsRetry: true
+        case .verified, .notAdult, .ageUnknown, .needsRetry: true
+        default: false
+        }
+    }
+
+    /// Shown with a warning on IDVerifyScreen: something the user has to act
+    /// on or can't get past.
+    var isProblem: Bool {
+        switch self {
+        case .needsRetry, .failed, .notAdult, .ageUnknown: true
         default: false
         }
     }
@@ -174,7 +199,8 @@ extension IdentityVerificationFlow.State {
         switch self {
         case .loading: .busy(title: "Loading…")
         case .notStarted: .start(title: "Start verification")
-        case .needsRetry, .failed: .start(title: "Try again")
+        // identity-session starts a fresh session for an unknown age.
+        case .needsRetry, .failed, .ageUnknown: .start(title: "Try again")
         case .starting: .busy(title: "Starting…")
         case .inProgress: .busy(title: "Verifying…")
         case .processing: .refresh(title: "Check status")
@@ -203,6 +229,7 @@ extension IdentityVerificationFlow.State {
         case .processing: "Stripe is checking your ID. This usually takes a minute or two."
         case .verified: "You're verified. You can book, pay and get paid."
         case .notAdult: "Your ID shows you're under 18. Booking, paying and getting paid on Spot Check are 18+."
+        case .ageUnknown: "Your ID was verified, but we couldn't read the date of birth on it. Try again with an ID where it's clear."
         case .loading, .notStarted, .starting, .inProgress: nil
         }
     }

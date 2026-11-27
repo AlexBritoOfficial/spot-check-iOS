@@ -71,12 +71,23 @@ final class FilmerOnboardingTests: XCTestCase {
         XCTAssertEqual(FilmerOnboarding.stepAfterPitch(identity: id(.verified, adult: false)), .notAdult)
     }
 
+    func testAVerifiedIDWithAnUnknownAgeGoesBackToTheIDStep() {
+        // Not "under 18": the ID screen explains it and offers another try.
+        XCTAssertEqual(FilmerOnboarding.stepAfterPitch(identity: id(.verified, adult: nil)), .verifyID)
+    }
+
+    func testAnUnknownAgeCanRetryButNotContinueInsideTheFlow() {
+        typealias State = IdentityVerificationFlow.State
+        XCTAssertEqual(State.ageUnknown.primaryAction(in: .filmerOnboarding), .start(title: "Try again"))
+    }
+
     // MARK: - IDVerify inside the flow
 
     func testInsideTheFlowThereIsNoSkipForNow() {
         typealias State = IdentityVerificationFlow.State
         let states: [State] = [.loading, .notStarted, .needsRetry(reason: "x"), .starting,
-                               .inProgress, .processing, .verified, .notAdult, .failed(message: "x")]
+                               .inProgress, .processing, .verified, .notAdult, .ageUnknown,
+                               .failed(message: "x")]
         for state in states {
             XCTAssertFalse(state.offersSkip(in: .filmerOnboarding), "\(state)")
         }
