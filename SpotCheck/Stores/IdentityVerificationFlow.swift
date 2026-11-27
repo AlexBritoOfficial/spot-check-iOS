@@ -66,7 +66,15 @@ final class IdentityVerificationFlow {
     /// Re-reads the stored row, e.g. after "Check status".
     func refresh(userID: UUID) async {
         do {
-            await setState(State(row: try await api.verification(for: userID)))
+            let row = try await api.verification(for: userID)
+            // Once submitted, a requires_input row with no error only means
+            // Stripe's first webhook hasn't landed yet -- not "never started".
+            // Reading it as notStarted dropped the "checking" note and offered
+            // "Start verification" again, which replaced the submitted session.
+            if state == .processing, row?.status == .requiresInput, row?.lastErrorCode == nil {
+                return
+            }
+            await setState(State(row: row))
         } catch {
             state = .failed(message: error.edgeFunctionUserMessage)
         }

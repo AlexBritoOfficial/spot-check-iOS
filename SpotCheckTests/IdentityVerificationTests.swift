@@ -232,6 +232,65 @@ final class IdentityVerificationTests: XCTestCase {
         XCTAssertEqual(flow.state, .verified)
     }
 
+    func testTheCheckingNoteStaysUntilTheWebhookLands() async {
+        // After the sheet, the row stays requires_input until Stripe's first
+        // webhook lands. A re-check in that gap used to read it as "not
+        // started": the clock note vanished after 3 seconds and the button
+        // went back to "Start verification".
+        let api = FakeIdentityVerificationAPI(row: nil)
+        api.start = .verify(clientSecret: "vs_1_secret_x")
+        let sleeper = CountingSleeper {
+            switch $0 {
+            case 1: break // No webhook yet: still requires_input.
+            case 2: api.row = self.row(.processing)
+            default: api.row = self.row(.verified, adult: true)
+            }
+        }
+        let flow = IdentityVerificationFlow(api: api, sleep: sleeper.sleep)
+        await flow.load(userID: userID)
+        await flow.start(userID: userID) { _ in
+            api.row = self.row(.requiresInput)
+            return .completed
+        }
+        XCTAssertEqual(flow.state, .processing)
+
+        await flow.keepCheckingWhileProcessing(userID: userID, every: .seconds(3))
+
+        XCTAssertEqual(flow.state, .verified)
+        XCTAssertEqual(sleeper.calls, 3)
+    }
+
+    func testCheckStatusBeforeTheWebhookKeepsShowingChecking() async {
+        let api = FakeIdentityVerificationAPI(row: nil)
+        api.start = .verify(clientSecret: "vs_1_secret_x")
+        let flow = IdentityVerificationFlow(api: api)
+        await flow.start(userID: userID) { _ in
+            api.row = self.row(.requiresInput)
+            return .completed
+        }
+
+        await flow.refresh(userID: userID)
+
+        XCTAssertEqual(flow.state, .processing)
+    }
+
+    func testATurnedDownAttemptStillEndsTheCheckingState() async {
+        // Only a requires_input row *without* an error is "not landed yet";
+        // one with an error is Stripe's answer.
+        let api = FakeIdentityVerificationAPI(row: nil)
+        api.start = .verify(clientSecret: "vs_1_secret_x")
+        let flow = IdentityVerificationFlow(api: api)
+        await flow.start(userID: userID) { _ in
+            api.row = self.row(.requiresInput)
+            return .completed
+        }
+
+        api.row = row(.requiresInput, error: "document_expired")
+        await flow.refresh(userID: userID)
+
+        XCTAssertEqual(flow.state, .needsRetry(reason: "Your ID has expired. Try again with a current one."))
+    }
+
     // MARK: - Fixtures
 
     private func row(_ status: IdentityStatus, adult: Bool? = nil, error: String? = nil) -> IdentityVerification {
